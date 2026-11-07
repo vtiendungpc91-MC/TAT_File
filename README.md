@@ -1,28 +1,49 @@
 # Sổ Thu Chi — app quản lý thu chi cá nhân (chạy offline)
 
 Web app (PWA): cài lên màn hình chính iPhone/Android như app thật, chạy **không cần mạng**.
-Dữ liệu chỉ lưu trên điện thoại (IndexedDB), không gửi lên server nào.
+Dữ liệu chỉ lưu trên thiết bị (IndexedDB), không gửi lên server nào.
+
+- **Link app:** https://vtiendungpc91-mc.github.io/SLA_Thu_Chi/
+- **Phiên bản khi ghi tài liệu này:** v7.15.0 (07/11/2026). Phiên bản hiện tại xem ở `VERSION` trong `sw.js`.
+
+## Cách tổ chức dữ liệu
+
+```
+User (tối đa 3)
+├── Account (tối đa 3; User đặc biệt 1)
+├── Thấu chi (tối đa 2; User đặc biệt 1)
+├── Tiết kiệm (tối đa 2)
+└── Thẻ tín dụng (tối đa 5)
+Secrecy (ngoài các User): NEOBANK
+```
+
+Màn hình chính là **Tổng quan** của User: 4 thẻ Account, Thấu chi, Tiết Kiệm, Thẻ tín dụng, mỗi thẻ liệt kê các tài khoản với số dư, thu/chi trong ngày, nút nhanh và thống kê. Nút góc trái chọn User và xem Notifications. Nút góc phải có thẻ Tổng quan (đổi được tên, biểu tượng, màu) và danh sách mục; chọn mục sẽ mở Giao dịch, Báo cáo, Kế hoạch, Cài đặt của mục đó, nút Đóng luôn về Tổng quan.
 
 ## Tính năng
 
 | Nhóm | Có gì |
 |---|---|
-| **Thu chi (B)** | Nhập nhanh (gõ `50k`, `1tr2`, `2,5tr`), giao dịch định kỳ (tự ghi hoặc chờ xác nhận), ảnh hóa đơn, nhập bằng giọng nói, tag + chia nhiều danh mục, đa tiền tệ (tỷ giá tự nhập), phím tắt khi nhấn giữ icon app (Android) |
-| **Ngân sách (D)** | Hạn mức theo tuần/tháng/năm, cảnh báo 80% và 100%, phân bổ 50/30/20 hoặc 6 chiếc lọ (JARS), mục tiêu tiết kiệm, quỹ dự phòng tự tính theo chi tiêu trung bình |
-| **Nhắc nhở (F)** | Nhắc trước hạn N ngày ngay trong app, thông báo hệ thống khi mở app, xuất hạn trả nợ và nhắc ghi chép hằng ngày sang **app Lịch** của điện thoại, tóm tắt tuần/tháng để chia sẻ |
-| **Trả nợ (A)** | Ngân hàng, số tiền mỗi kỳ, ngày đến hạn, lặp hằng tháng và số kỳ còn lại, cách thanh toán và ghi chú (STK, nội dung CK…), đánh dấu đã trả (tự ghi khoản chi), hoàn tác |
-| **Tài khoản ngân hàng** | Tiền nằm trong tài khoản ngân hàng (không có Tiền mặt): ngân hàng, số TK, chủ TK, tên gợi nhớ; thêm nhiều tài khoản; chỉnh số dư cho khớp app ngân hàng. **Không đủ số dư thì không chi, chuyển khoản, góp, trả nợ hay nạp mục tiêu được**; khoản định kỳ tự động thiếu tiền sẽ chờ xử lý |
-| **Khóa app** | Mật khẩu số khi mở app (mặc định `2024`, nên đổi trong Cài đặt → Bảo mật), tự khóa khi rời app, che nội dung ở màn hình đa nhiệm, sai 5 lần phải chờ 30 giây |
-| **Người dùng & mục** | Tối đa 3 người dùng (nút góc trái trên; trong đó có ⚙️ Cài đặt). Mỗi người dùng tạo các mục 🏦 Ngân hàng, 📈 Đầu tư (sổ thu/chi có tài khoản) và 💳 Thẻ chi tiêu — chọn/tạo ở nút góc phải trên |
-| **Nhiều người dùng** | Mỗi người (bạn, vợ/chồng, con…) có sổ riêng: ví, giao dịch, ngân sách, mục tiêu, trả nợ, cài đặt tách biệt. Chuyển người bằng nút tên ở góc trên trái |
-| **Góp** | Chuyển tiền từ người này sang người khác: sổ người góp ghi khoản chi "Góp cho …", sổ người nhận ghi khoản thu "Nhận góp từ …". Xóa một bên thì bên kia tự xóa theo |
-| **Trích** | Ngược với Góp: lấy tiền từ tài khoản của người khác về tài khoản của mình (người bị trích phải đủ số dư) |
-| **Thẻ chi tiêu** | Tạo trong danh sách người dùng (+ Thẻ chi tiêu). Thẻ không có số dư: ghi các khoản chi theo nguồn (MoMo, ZaloPay, ShopeePay…), sau đó **Trích thanh toán** từng khoản (hoặc tất cả) từ tài khoản của một người dùng → khoản chuyển **Done**, sổ người trả ghi khoản chi tương ứng. Hủy thanh toán / xóa bên người trả thì khoản của thẻ mở lại |
-| **Nhập số tiền** | Tự thêm dấu chấm phân cách hàng nghìn khi gõ; gợi ý nút **+000** để nhập nhanh |
-| **Avatar** | Hơn 40 icon ngộ nghĩnh (người, thú cưng, emoji) hoặc dùng ảnh riêng làm avatar cho người dùng/thẻ |
-| **Ẩn/hiện mục** | Mỗi người dùng tự chọn ẩn/hiện mục Báo cáo, Kế hoạch (Cài đặt → Hiển thị) |
-| **Báo cáo** | Tổng quan/Giao dịch xem theo ngày/tháng; Báo cáo chọn ngày, tháng, quý, năm hoặc khoảng thời gian tự chọn, biểu đồ thu chi theo thời gian, biểu đồ tròn theo danh mục, so sánh với kỳ trước, chi theo tag |
-| **Dữ liệu** | Sao lưu **tất cả** người dùng + thẻ chi tiêu vào 1 file `.json` và khôi phục toàn bộ từ file đó (vẫn đọc được bản sao lưu cũ chỉ có 1 sổ); xuất CSV mở bằng Excel |
+| **Thu/Chi** | Ghi vào mục Account hoặc Thấu chi; gõ tắt `50k`, `1tr2`; chia nhiều danh mục; giao dịch định kỳ (tự ghi hoặc chờ xác nhận). Không đủ số dư thì không chi được |
+| **Transfer** | Chuyển tiền giữa các mục, ghi ở cả 2 sổ. Xóa một bên thì bên kia xóa theo, sửa ngày áp dụng cả 2 bên. Có danh mục riêng, chọn được biểu tượng |
+| **Get In** | Account, Thấu chi, Tiết kiệm rút từ Account/Thấu chi khác; mục của User đặc biệt theo quy tắc riêng bên dưới. Chỉ Account của User đặc biệt giao dịch được với ngân hàng trong Secrecy (không hiện nếu Secrecy đang ẩn). Các khoản Withdraw cũ vẫn giữ trong lịch sử |
+| **Quyền của từng mục** | Cài đặt riêng của Account, Thấu chi: bật/tắt Thu, Chi, Transfer, Get In. Account, Thấu chi, Tiết kiệm: công tắc cho phép trừ tiền khỏi tài khoản. Tiết kiệm có Transfer và Get In |
+| **Account** | Sổ thu/chi có 1 tài khoản ngân hàng và số dư |
+| **Thấu chi** | Nhập hạn mức và số dư lúc tạo, sau đó không sửa được (xóa rồi tạo lại). Thu/Chi và Transfer như Account, được âm số dư, vẫn cộng vào tổng Ngân hàng. Tiền ra hoặc vào vượt hạn mức thì cảnh báo, không chặn |
+| **Tiết kiệm** | Chỉ Transfer và Get In với Account/Thấu chi |
+| **Thẻ Tín Dụng** | Tạo mới nhập hạn mức âm tối đa và số nợ hiện tại; Chi vượt hạn mức bị chặn. Có Thu/Chi, luôn hiện số âm, hết nợ là 0. Nút Thanh toán trả một phần hoặc toàn bộ từ Account. Nhận Transfer từ Account/Thấu chi và Get In từ Account/Thấu chi, không chuyển tiền ra và không bị Get In; form hiện số đang nợ, không cho thu hoặc trả vượt số nợ. Tổng quan hiện tổng nợ thẻ |
+| **Ví điện tử (đã bỏ, không tạo mới được; ví cũ vẫn dùng được)** | Không có số dư: ghi khoản chi (số tiền, danh mục, nội dung), rồi thanh toán từng khoản hoặc tất cả từ mục Account. Cài đặt thẻ có nhắc trích trả nợ theo ngày và giờ, gồm các khoản chưa trả trước tháng hiện tại |
+| **User đặc biệt ⭐** | Tối đa 1, đánh dấu lúc tạo. Có sẵn 1 Account + 1 Thấu chi, chia số dư thành **Personal** và **Family** (không được âm). Giao dịch phải ghi vào 1 trong 2 phần, trừ giao dịch giữa Account và Thấu chi. Chuyển đổi 2 phần và Reset trong Cài đặt. Chỉ Account của User này mới giao dịch được với User khác; Thấu chi được Transfer thêm đến ngân hàng trong Secrecy |
+| **Kế hoạch** | Ngân sách, Mục tiêu, Trả nợ, Định kỳ. Lúc thanh toán khoản Trả nợ, số tiền điền sẵn theo thiết lập và sửa được cho riêng kỳ đó |
+| **Nhắc nhở** | Theo từng User, tối đa 9, tạo ở cuối màn hình nút góc phải Tổng quan. Có tên, ngày đến hạn, giờ nhắc, số ngày nhắc trước; lặp theo ngày, tuần hoặc tháng với số kì lặp (để trống là không giới hạn). Nhắc nhở cũ trong từng mục tự chuyển lên User |
+| **Notifications** | Trả nợ và Nhắc nhở hiện từ đúng ngày giờ đã chọn (hạn trừ số ngày nhắc trước), giữ đến khi thanh toán hoặc bấm Done. Tổng quan chạy lần lượt các thông báo ở dòng trên cùng bên trái, mỗi cái 5 giây, xoay vòng |
+| **Thống kê ở Tổng quan** | Tối đa 3 thống kê mỗi mục Account/Tiết kiệm, loại Transfer/Get In hoặc Thu/Chi, đặt được tên và biểu tượng, số liệu trong ngày. Trong Cài đặt của mục, mỗi thống kê có công tắc ẩn/hiện ở Tổng quan; công tắc ở dòng tiêu đề chỉ thu gọn danh sách |
+| **Nút nhanh** | Tạo trong Cài đặt của mục, tên tối đa 12 ký tự, icon theo loại (mặc định 💸 Chi, 💰 Thu, 🤝 Transfer, 🔄 Get In; đổi được trong Cài đặt chung → Icon giao dịch, có sẵn 5 cặp tiền ra/tiền vào, tên chức năng cố định). Tối đa Account/Thấu chi 6, Tiết kiệm 3, Thẻ 6. Hiện ở Tổng quan, mỗi dòng tối đa 3 nút, tối đa 2 dòng. Mỗi nút có công tắc ẩn/hiện ở Tổng quan; công tắc ở dòng tiêu đề chỉ thu gọn danh sách. Nút luôn xếp theo Chi, Thu, Transfer, Get In. Dưới cụm nút luôn hiện 5 giao dịch gần nhất (có nút ẩn/hiện); khoản mới trong 10 phút có nút Recall để hủy |
+| **Nhập số tiền** | Tự thêm dấu chấm hàng nghìn, nút **+000** bên phải ô, đề xuất số tiền ngay dưới ô. Ngày cố định là hôm nay khi ghi mới, chỉ sửa khi mở lại giao dịch |
+| **Phần đầu cố định** | Khi cuộn, phần đầu đứng yên: Tổng quan đến dòng thẻ Account, Thấu chi…; Giao dịch và Báo cáo đến dòng Ngày/Tuần/Tháng; Kế hoạch đến dòng thẻ Ngân sách, Mục tiêu…; Cài đặt của mục đến ngay trên nhóm đầu tiên |
+| **Giao dịch** | Lọc theo kỳ, loại và nhiều danh mục đã có trong lịch sử; tìm kiếm; xuất CSV |
+| **Báo cáo** | Theo ngày, tháng, quý, năm hoặc khoảng tự chọn; biểu đồ theo thời gian và danh mục |
+| **Khóa app** | Mật khẩu số khi mở app (mặc định `2024`, nên đổi trong Cài đặt), khóa riêng từng mục được |
+| **Dữ liệu** | Sao lưu **tất cả** vào 1 file `.json` và khôi phục từ file đó; nút Save nhanh |
 
 ## 1. Chạy thử trên máy tính
 
@@ -32,60 +53,48 @@ powershell -ExecutionPolicy Bypass -File serve.ps1
 
 Mở `http://localhost:8080` bằng Chrome hoặc Edge. Bấm F12, chọn biểu tượng điện thoại để xem giao diện mobile.
 
-## 2. Đưa lên GitHub Pages (miễn phí, chỉ làm 1 lần)
-
-Không cần cài Git, làm hoàn toàn trên trình duyệt:
-
-1. Tạo tài khoản tại https://github.com (nếu chưa có).
-2. Bấm **New repository**, đặt tên ví dụ `sothuchi`, chọn **Public**, rồi bấm **Create repository**.
-3. Trong repo mới, bấm **uploading an existing file** và kéo thả **toàn bộ nội dung** thư mục này vào: `index.html`, `manifest.webmanifest`, `sw.js`, `.nojekyll` và các thư mục `css`, `js`, `icons`. Không cần `serve.ps1` và `README.md`. Sau đó bấm **Commit changes**.
-   > File `.nojekyll` bị Windows ẩn đi. Nếu không thấy thì bỏ qua cũng được.
-4. Vào **Settings → Pages**. Ở mục *Build and deployment*, chọn **Deploy from a branch**, branch `main`, thư mục `/ (root)`, rồi bấm **Save**.
-5. Đợi 1–2 phút, link app sẽ có dạng `https://<tên-tài-khoản>.github.io/sothuchi/`.
-
-> Repo Public thì ai có link cũng xem được **mã nguồn app**, nhưng **không xem được dữ liệu** của bạn, vì dữ liệu chỉ nằm trên điện thoại.
-
-## 3. Cài lên điện thoại
+## 2. Cài lên điện thoại
 
 **iPhone (iOS 16.4+ khuyến nghị)**
-1. Mở link bằng **Safari** (bắt buộc dùng Safari).
-2. Bấm nút **Chia sẻ** ⬆️, chọn **Thêm vào MH chính**, rồi bấm **Thêm**.
-3. Mở app từ icon "Thu Chi" trên màn hình chính. Từ đây app chạy offline.
+1. Mở link app bằng **Safari**.
+2. Bấm nút **Chia sẻ** của Safari, chọn **Thêm vào MH chính**, rồi bấm **Thêm**.
+3. Mở app từ icon "Thu Chi". Từ đây app chạy offline.
 
 **Android**
-1. Mở link bằng **Chrome**.
+1. Mở link app bằng **Chrome**.
 2. Bấm menu ⋮, chọn **Cài đặt ứng dụng** (hoặc **Thêm vào màn hình chính**).
-3. Nhấn giữ icon app để thấy phím tắt *Thêm khoản chi / Thêm khoản thu / Lịch trả nợ*.
 
-## 4. Cập nhật app sau khi sửa code
+## 3. Cập nhật app sau khi sửa code
 
-1. Mở `sw.js`, tăng số phiên bản: `const VERSION = 'v1.0.1';`
-2. Upload lại các file đã sửa lên GitHub.
-3. Trên điện thoại, mở app khi có mạng, đóng hẳn rồi mở lại. Dữ liệu vẫn giữ nguyên.
+1. Mở `sw.js`, tăng số phiên bản ở dòng `const VERSION = '...';`. Không tăng thì điện thoại vẫn giữ bản cũ.
+2. Trên GitHub, vào đúng thư mục (`js`, `css` hoặc thư mục gốc), chọn **Add file → Upload files**, kéo file đã sửa vào rồi bấm **Commit changes**. Không cần tải `.nojekyll` (file rỗng).
+3. Đợi GitHub Pages cập nhật xong. Trên điện thoại, mở app khi có mạng, đóng hẳn rồi mở lại, có thể phải làm 2 lần. Dữ liệu vẫn giữ nguyên.
 
-## 5. Lưu ý quan trọng
+## 4. Lưu ý quan trọng
 
-- **Sao lưu định kỳ** (Cài đặt → Sao lưu) vào iCloud Drive, Google Drive hoặc Zalo "Cloud của tôi". Xóa app khỏi màn hình chính hoặc xóa dữ liệu Safari/Chrome sẽ **mất dữ liệu**.
-- **Nhắc hạn khi app đang đóng:** web app không tự báo chuông được. Hãy bấm **"Thêm vào Lịch"** ở khoản nợ hoặc ở Cài đặt → Nhắc ghi chép. App Lịch của điện thoại sẽ báo cả khi offline. Thông báo trong app chỉ hiện khi bạn mở app.
-- **Giọng nói** dùng nhận dạng của trình duyệt và thường **cần mạng**. Trên iPhone, tính năng này có thể không hoạt động khi mở từ màn hình chính; khi đó nút 🎤 sẽ tự ẩn.
-- **Thêm vào Lịch trên iPhone:** nếu nút "Mở bằng app Lịch" không phản hồi, dùng "Chia sẻ / Lưu file .ics", lưu vào Tệp rồi mở file đó.
-- **Tỷ giá ngoại tệ** do bạn tự nhập (app offline nên không tự cập nhật).
+- **Sao lưu định kỳ.** Xóa app khỏi màn hình chính hoặc xóa dữ liệu trình duyệt sẽ **mất dữ liệu**. Trên iPhone, file sao lưu lưu qua bảng Chia sẻ, không tự ghi vào một file đã chọn.
+- **Thông báo khi app đóng:** ứng dụng web không tự báo được. Hãy bấm **Thêm vào Lịch** ở khoản Trả nợ hoặc Nhắc nhở để app Lịch đổ chuông đúng giờ. Đổi giờ thì phải thêm lại vào Lịch.
+- **Repo Public:** ai có link cũng xem được **mã nguồn**, nhưng **không xem được dữ liệu**, vì dữ liệu chỉ nằm trên điện thoại.
 
 ## Cấu trúc mã nguồn
 
 ```
 index.html            khung trang + thanh tab
-manifest.webmanifest  thông tin cài đặt PWA (tên, icon, phím tắt)
-sw.js                 service worker – cache để chạy offline
-css/app.css           giao diện (tự đổi sáng/tối theo máy)
+manifest.webmanifest  thông tin cài đặt PWA
+sw.js                 service worker: cache để chạy offline, chứa VERSION
+css/app.css           giao diện (sáng/tối: nút 🌙 ở màn hình nút góc phải; chưa chọn thì theo máy)
 js/app.js             khởi động, điều hướng, thông báo
 js/views.js           các màn hình và form
-js/store.js           nghiệp vụ: số dư, tổng hợp, định kỳ, trả nợ, ngân sách, sao lưu
+js/store.js           nghiệp vụ: số dư, Transfer/Get In, Personal/Family, thông báo, sao lưu
 js/db.js              lưu trữ IndexedDB
-js/utils.js           định dạng tiền/ngày, đọc số tiền gõ tắt, kỳ tuần/tháng/năm
+js/ui.js              thành phần dùng chung: ô tiền, ô ngày, bottom sheet, chọn kỳ
+js/utils.js           định dạng tiền/ngày, đọc số tiền gõ tắt, kỳ thời gian
 js/charts.js          biểu đồ SVG
-js/voice.js           nhập bằng giọng nói
+js/icons.js           thư viện biểu tượng có tìm kiếm
 js/ics.js             tạo file lịch .ics
+js/lock.js            khóa app bằng mật khẩu
+js/autosave.js        lưu file sao lưu
+js/voice.js           không còn dùng (nhập giọng nói đã bỏ khỏi giao diện)
 icons/                icon app
 serve.ps1             server chạy thử trên máy tính
 ```

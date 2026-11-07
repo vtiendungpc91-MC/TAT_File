@@ -6,7 +6,7 @@ import { esc, getRange, customRange, todayISO, addDays, fmtDate, PERIOD_LABEL } 
  * Ô date thật nằm ẩn phía trên chữ, chạm vào sẽ mở lịch chọn ngày.
  */
 export function datePick(id, value, label = 'Ngày', attrs = '') {
-  return `<label class="date-pick"><span class="dp-text" data-label="${esc(label)}">${esc(label)}: <b>${value ? fmtDate(value) : 'chưa chọn'}</b></span>
+  return `<label class="date-pick${/disabled/.test(attrs) ? ' fixed' : ''}"><span class="dp-text" data-label="${esc(label)}">${esc(label)}: <b>${value ? fmtDate(value) : 'chưa chọn'}</b></span>
     <span class="dp-ic">📅</span><input type="date" ${id ? `id="${id}"` : ''} value="${esc(value || '')}" aria-label="${esc(label)}" ${attrs}></label>`;
 }
 export function syncDatePick(inp) {
@@ -16,17 +16,19 @@ export function syncDatePick(inp) {
   t.innerHTML = t.dataset.mini ? `<small>${esc(t.dataset.label)}</small><b>${d}</b>` : `${esc(t.dataset.label)}: <b>${d}</b>`;
 }
 
+/** Ô tiền kèm nút +000 nằm bên phải, ngoài ô nhập. */
+export const moneyBox = (input) => `<div class="money-box">${input}<button type="button" class="plus000" data-plus000 tabindex="-1" aria-label="Thêm 000">+000</button></div>`;
+
 /**
- * Hàng nhập tiền dùng chung cho Thu/Chi, Góp, Trích, Thẻ chi tiêu:
- * [Ngày 20%] [Ô số tiền 60%] [+000 20%].
+ * Hàng nhập tiền dùng chung: [Ngày 30%] [Ô số tiền], đề xuất số tiền ở dưới.
+ * Ghi mới thì ngày cố định; chỉ sửa ngày được khi sửa giao dịch (editDate = true).
  */
-export function amountLine({ dateId, date, amtId, amount = '', label = 'Ngày', big = false }) {
+export function amountLine({ dateId, date, amtId, amount = '', label = 'Ngày', big = false, editDate = false, after = '' }) {
   return `<div class="amt-line">
-    <label class="date-pick mini"><span class="dp-text" data-label="${esc(label)}" data-mini="1"><small>${esc(label)}</small><b>${date ? fmtDate(date) : 'chưa chọn'}</b></span>
-      <input type="date" id="${dateId}" value="${esc(date || '')}" aria-label="${esc(label)}"></label>
-    <input id="${amtId}" class="${big ? 'amount-input' : 'money'}" inputmode="decimal" autocomplete="off" placeholder="0" value="${esc(amount)}" aria-label="Số tiền">
-    <div class="zero-cell"><div class="zero-sug" data-zero-for="${amtId}" hidden></div></div>
-  </div><em class="hint center" data-hint-for="${amtId}"></em>`;
+    <label class="date-pick mini${editDate ? '' : ' fixed'}"><span class="dp-text" data-label="${esc(label)}" data-mini="1"><small>${esc(label)}</small><b>${date ? fmtDate(date) : 'chưa chọn'}</b></span>
+      <input type="date" id="${dateId}" value="${esc(date || '')}" aria-label="${esc(label)}" ${editDate ? '' : 'disabled'}></label>
+    ${moneyBox(`<input id="${amtId}" class="${big ? 'amount-input' : 'money'}" inputmode="decimal" autocomplete="off" placeholder="0" value="${esc(amount)}" aria-label="Số tiền">`)}
+  </div><div class="zero-sug" data-zero-for="${amtId}" hidden></div>${after}<em class="hint center" data-hint-for="${amtId}"></em>`;
 }
 import { state } from './store.js';
 
@@ -34,16 +36,13 @@ import { state } from './store.js';
 export const ui = {
   period: null, // Tổng quan + Giao dịch: { type: day|month, anchor }
   reportPeriod: null, // Báo cáo: { type: day|month|quarter|year|custom, anchor, from, to }
-  txFilter: { type: 'all', q: '', categoryId: null, tag: null, accountId: null },
+  txFilter: { type: 'all', q: '', categoryIds: [], tag: null },
   reportType: 'expense',
   planTab: 'budget',
 };
 
 /** Các loại kỳ cho từng nơi: "main" = Tổng quan/Giao dịch, "report" = Báo cáo. */
-export const PERIOD_TYPES = { main: ['day', 'month'], report: ['day', 'month', 'quarter', 'year', 'custom'], card: ['day', 'week', 'month', 'custom'] };
-/** Mục Đầu tư và Tiết kiệm xem theo Ngày / Tuần / Tháng / Khoảng. */
-const FUND_TYPES = ['day', 'week', 'month', 'custom'];
-const typesFor = (key) => (key === 'main' && ['invest', 'saving'].includes(state.profileKind) ? FUND_TYPES : PERIOD_TYPES[key]);
+export const PERIOD_TYPES = { main: ['day', 'week', 'month', 'custom'], report: ['day', 'month', 'quarter', 'year', 'custom'], card: ['day', 'week', 'month', 'custom'] };
 
 export function periodState(key = 'main') {
   if (key === 'report' || key === 'card') {
@@ -68,7 +67,9 @@ export const rangeFor = (key) => rangeOf(periodState(key));
 
 // ---------- Ô nhập số tiền: phân cách hàng nghìn + gợi ý thêm 000 ----------
 // Áp dụng cho mọi ô tiền (class money, amount-input hoặc có data-money).
-// Gõ "45" → gợi ý nút [+000] → "45.000"; gõ tắt "1tr2", "50k" vẫn dùng được.
+// Đề xuất số tiền theo số chữ số đã gõ (x10 mũ): 1 số → 4,5,6; 2 số → 3,4,5; 3 số → 2,3,4; 4 số → 2,3; từ 5 số không đề xuất.
+// Gõ tắt "1tr2", "50k" vẫn dùng được.
+const SUGGEST_POWERS = { 1: [4, 5, 6], 2: [3, 4, 5], 3: [2, 3, 4], 4: [2, 3] };
 const MONEY_SEL = 'input.money, input.amount-input, input[data-money]';
 export const groupDigits = (digits) => digits.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
 
@@ -98,23 +99,28 @@ function zeroSuggest(inp) {
     if (!box) {
       box = document.createElement('div');
       box.className = 'zero-sug';
-      (inp.closest('.amount-row') || inp).insertAdjacentElement('afterend', box);
+      (inp.closest('.split-row') || inp.closest('.money-box') || inp).insertAdjacentElement('afterend', box);
     }
     inp._zeroBox = box;
     // Giữ bàn phím khi bấm gợi ý.
     box.addEventListener('pointerdown', (e) => e.preventDefault());
     box.addEventListener('mousedown', (e) => e.preventDefault());
     box.addEventListener('click', (e) => {
-      const b = e.target.closest('[data-zero]');
+      const b = e.target.closest('[data-val]');
       if (!b) return;
-      inp.value = groupDigits(inp.value.replace(/\./g, '') + b.dataset.zero);
+      inp.value = groupDigits(b.dataset.val);
       inp.dispatchEvent(new Event('input', { bubbles: true }));
+      inp.dispatchEvent(new Event('change', { bubbles: true }));
       inp.focus();
     });
   }
   const digits = inp.value.replace(/\./g, '');
-  if (isVndInput(inp) && /^\d{1,7}$/.test(digits) && Number(digits) > 0) {
-    box.innerHTML = '<button type="button" class="chip" data-zero="000">+000</button>';
+  const powers = SUGGEST_POWERS[digits.length];
+  if (isVndInput(inp) && powers && /^\d+$/.test(digits) && Number(digits) > 0) {
+    box.innerHTML = powers.map((p) => {
+      const v = String(Number(digits) * 10 ** p);
+      return `<button type="button" class="chip" data-val="${v}">${groupDigits(v)}</button>`;
+    }).join('');
     box.hidden = false;
   } else {
     box.hidden = true;
@@ -128,6 +134,31 @@ document.addEventListener('input', (e) => {
   zeroSuggest(inp);
 });
 
+// Nút +000 trong ô tiền: giữ bàn phím khi bấm, chỉ thêm khi ô đang là số (bỏ qua ô trống và cách gõ tắt 1tr2, 50k).
+document.addEventListener('pointerdown', (e) => { if (e.target.closest?.('[data-plus000]')) e.preventDefault(); });
+document.addEventListener('mousedown', (e) => { if (e.target.closest?.('[data-plus000]')) e.preventDefault(); });
+document.addEventListener('click', (e) => {
+  const b = e.target.closest?.('[data-plus000]');
+  if (!b) return;
+  const inp = b.parentElement.querySelector('input');
+  if (/^\d[\d.]*$/.test(inp.value)) {
+    inp.value = `${inp.value.replace(/\./g, '')}000`;
+    inp.dispatchEvent(new Event('input', { bubbles: true }));
+    inp.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+  inp.focus();
+});
+
+// ---------- Chế độ sáng / tối ----------
+export const isDark = () => document.documentElement.classList.contains('dark');
+export function toggleTheme() {
+  const dark = !isDark();
+  document.documentElement.classList.toggle('dark', dark);
+  document.getElementById('theme-color').content = dark ? '#0d1117' : '#1f6feb';
+  localStorage.setItem('stc-theme', dark ? 'dark' : 'light');
+  return dark;
+}
+
 let toastTimer;
 export function toast(msg, ms = 2400) {
   const el = document.getElementById('toast');
@@ -136,6 +167,64 @@ export function toast(msg, ms = 2400) {
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => el.classList.remove('show'), ms);
 }
+
+// ---------- Khóa màn hình phía sau khi đang mở bottom sheet ----------
+// Safari trên iPhone bỏ qua overflow:hidden của body, nên phải ghim body lại và nhớ vị trí cuộn.
+let pageLocked = false, lockedY = 0;
+// --lock-y giữ phần đầu cố định của màn hình đứng đúng chỗ trong lúc trang bị ghim.
+function setLockedTop(y) {
+  document.body.style.top = `-${y}px`;
+  document.body.style.setProperty('--lock-y', `${y}px`);
+}
+function lockPage() {
+  if (pageLocked) return;
+  pageLocked = true;
+  lockedY = window.scrollY;
+  setLockedTop(lockedY);
+  document.body.classList.add('noscroll');
+}
+function unlockPage() {
+  if (!pageLocked) return;
+  pageLocked = false;
+  document.body.classList.remove('noscroll');
+  document.body.style.top = '';
+  document.body.style.removeProperty('--lock-y');
+  window.scrollTo(0, lockedY);
+}
+/** Vẽ lại màn hình phía sau: giữ vị trí nếu cùng màn hình, về đầu nếu đã chuyển màn hình. */
+export function restorePageScroll(sameView, y) {
+  if (pageLocked) {
+    if (!sameView) { lockedY = 0; setLockedTop(0); }
+    return;
+  }
+  window.scrollTo(0, sameView ? y : 0);
+}
+/** Vuốt trong sheet: chỉ cho vùng còn cuộn được chạy; hết chỗ cuộn hoặc vuốt vào vùng ngoài thì chặn, tránh cả trang bị kéo theo. */
+function guardSheetTouch(wrap) {
+  let lastX = 0, lastY = 0;
+  wrap.addEventListener('touchstart', (e) => { lastX = e.touches[0].clientX; lastY = e.touches[0].clientY; }, { passive: true });
+  wrap.addEventListener('touchmove', (e) => {
+    if (e.touches.length > 1) return;
+    const dx = e.touches[0].clientX - lastX, dy = e.touches[0].clientY - lastY;
+    lastX = e.touches[0].clientX; lastY = e.touches[0].clientY;
+    if (Math.abs(dx) > Math.abs(dy)) return; // Vuốt ngang: dải nút cuộn ngang.
+    for (let el = e.target; el && el !== wrap; el = el.parentElement) {
+      if (!/(auto|scroll)/.test(getComputedStyle(el).overflowY) || el.scrollHeight <= el.clientHeight + 1) continue;
+      const atTop = el.scrollTop <= 0, atEnd = el.scrollTop + el.clientHeight >= el.scrollHeight - 1;
+      if ((dy > 0 && !atTop) || (dy < 0 && !atEnd) || dy === 0) return;
+    }
+    if (e.cancelable) e.preventDefault();
+  }, { passive: false });
+  // Bàn phím iPhone đóng lại có thể để lệch trang, làm chỗ bấm không khớp chỗ hiển thị.
+  wrap.addEventListener('focusout', () => {
+    setTimeout(() => {
+      if (pageLocked && !document.activeElement?.matches?.('input, select, textarea')) window.scrollTo(0, 0);
+    }, 100);
+  });
+}
+
+// Sheet vừa đóng trong cùng lượt xử lý: sheet mở ngay sau đó thay thế tức thì, không trượt xuống rồi trượt lên.
+let justClosed = null;
 
 /** Mở bottom sheet. onMount(sheetEl, close) để gắn sự kiện cho form. */
 /** headAction: HTML đặt ở góc phải thanh tiêu đề (vd: nút Lưu của form). */
@@ -152,16 +241,26 @@ export function openSheet({ title, body, onMount, onClose, wide = false, headAct
       <div class="sheet-body">${body}</div>
     </div>`;
   document.body.appendChild(wrap);
-  document.body.classList.add('noscroll');
-  requestAnimationFrame(() => wrap.classList.add('open'));
+  lockPage();
+  guardSheetTouch(wrap);
+  if (justClosed) {
+    justClosed.remove();
+    justClosed = null;
+    wrap.classList.add('no-anim', 'open');
+    requestAnimationFrame(() => requestAnimationFrame(() => wrap.classList.remove('no-anim')));
+  } else {
+    requestAnimationFrame(() => wrap.classList.add('open'));
+  }
   let closed = false;
   const close = () => {
     if (closed) return;
     closed = true;
     wrap.classList.remove('open');
+    justClosed = wrap;
+    queueMicrotask(() => { if (justClosed === wrap) justClosed = null; });
     setTimeout(() => {
       wrap.remove();
-      if (!document.querySelector('.sheet-wrap')) document.body.classList.remove('noscroll');
+      if (!document.querySelector('.sheet-wrap')) unlockPage();
     }, 220);
     onClose && onClose();
   };
@@ -169,6 +268,10 @@ export function openSheet({ title, body, onMount, onClose, wide = false, headAct
   wrap.querySelector('[data-close]').addEventListener('click', close);
   const sheet = wrap.querySelector('.sheet');
   onMount && onMount(sheet, close);
+  // Mỗi mục chỉ có 1 tài khoản: ô tài khoản chỉ để xem, không bấm chọn được.
+  const lockAccounts = () => sheet.querySelectorAll('select[data-acc]').forEach((s) => { s.disabled = s.options.length <= 1; });
+  lockAccounts();
+  new MutationObserver(lockAccounts).observe(sheet, { childList: true, subtree: true });
   return close;
 }
 
@@ -190,7 +293,7 @@ export function periodBar(key = 'main') {
       ${todayISO() < r.start || todayISO() > r.end ? `<button type="button" class="link center" data-act="period-today" ${k}>↺ Về ${p.type === 'day' ? 'hôm nay' : 'kỳ hiện tại'}</button>` : ''}`;
   return `
   <div class="period">
-    <div class="seg${typesFor(key).length > 3 ? ' small' : ''}">${typesFor(key).map((t) =>
+    <div class="seg${PERIOD_TYPES[key].length > 3 ? ' small' : ''}">${PERIOD_TYPES[key].map((t) =>
       `<button type="button" data-act="period-type" ${k} data-v="${t}" class="${p.type === t ? 'on' : ''}">${PERIOD_LABEL[t]}</button>`).join('')}
     </div>
     ${nav}

@@ -20,12 +20,13 @@ function fold(line) {
 
 /** Trigger: nhắc lúc `hour` giờ sáng, trước `daysBefore` ngày so với sự kiện cả ngày. */
 function trigger(daysBefore, hour = 9) {
-  const mins = daysBefore * 1440 - hour * 60;
+  const mins = Math.round(daysBefore * 1440 - hour * 60);
   return mins > 0 ? `-PT${mins}M` : `PT${-mins}M`;
 }
 
 /**
- * events: [{ uid, date:'YYYY-MM-DD', title, description, remindDays, rrule }]
+ * events: [{ uid, date:'YYYY-MM-DD', title, description, remindDays, rrule, time:'HH:MM' }]
+ * Có time thì chuông báo đúng giờ đó; không có thì 9h ngày nhắc trước và 8h ngày đến hạn.
  */
 export function buildAllDayICS(events) {
   const L = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//SoThuChi//VI', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH'];
@@ -38,8 +39,9 @@ export function buildAllDayICS(events) {
       `SUMMARY:${escText(e.title)}`, `DESCRIPTION:${escText(e.description)}`);
     if (e.rrule) L.push(`RRULE:${e.rrule}`);
     const alarms = new Set([e.remindDays || 0, 0]);
+    const [h, m] = (e.time || '').split(':').map(Number);
     for (const d of alarms) {
-      L.push('BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${escText(e.title)}`, `TRIGGER:${trigger(d, d ? 9 : 8)}`, 'END:VALARM');
+      L.push('BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${escText(e.title)}`, `TRIGGER:${trigger(d, e.time ? h + m / 60 : d ? 9 : 8)}`, 'END:VALARM');
     }
     L.push('END:VEVENT');
   }

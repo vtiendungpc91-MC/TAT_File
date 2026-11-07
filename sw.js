@@ -1,6 +1,6 @@
 // Service worker: lưu toàn bộ app vào bộ nhớ đệm để chạy offline.
 // Khi sửa code, tăng VERSION để điện thoại tải bản mới.
-const VERSION = 'v5.2.1';
+const VERSION = 'v7.15.0';
 const CACHE = 'sothuchi-' + VERSION;
 const ASSETS = [
   './',
@@ -18,6 +18,7 @@ const ASSETS = [
   './js/ics.js',
   './js/lock.js',
   './js/icons.js',
+  './js/autosave.js',
   './icons/icon.svg',
   './icons/icon-192.png',
   './icons/icon-512.png',

@@ -5,8 +5,17 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
   <title>Sổ Thu Chi</title>
   <meta name="description" content="Quản lý thu chi cá nhân, chạy offline">
-  <meta name="theme-color" content="#1f6feb" media="(prefers-color-scheme: light)">
-  <meta name="theme-color" content="#0d1117" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" id="theme-color" content="#1f6feb">
+  <script>
+    // Áp chế độ sáng/tối trước khi vẽ để không bị nháy màn hình.
+    try {
+      var t = localStorage.getItem('stc-theme');
+      if (t === 'dark' || (!t && matchMedia('(prefers-color-scheme: dark)').matches)) {
+        document.documentElement.classList.add('dark');
+        document.getElementById('theme-color').content = '#0d1117';
+      }
+    } catch (e) {}
+  </script>
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -21,7 +30,6 @@
   <div id="app">
     <main id="main" class="main"></main>
     <nav class="tabbar" id="tabbar">
-      <a href="#/home" data-tab="home"><span class="ti">🏠</span><span>Tổng quan</span></a>
       <a href="#/tx" data-tab="tx"><span class="ti">📒</span><span>Giao dịch</span></a>
       <a href="#/reports" data-tab="reports"><span class="ti">📊</span><span>Báo cáo</span></a>
       <a href="#/plan" data-tab="plan"><span class="ti">🎯</span><span>Kế hoạch</span></a>

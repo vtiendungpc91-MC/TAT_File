@@ -10,7 +10,7 @@ const RAW = `
 ☀️ mat troi sun|🌈 cau vong|🔥 lua fire|💧 nuoc water|⚡ dien sam|❄️ tuyet lanh|🌊 song bien|⛰️ nui|🏖️ bien du lich|🏕️ cam trai
 🏦 ngan hang bank|💰 tui tien money|💵 tien mat cash|💴 tien yen|💶 euro|💷 bang anh|🪙 dong xu coin|💳 the card|🏧 atm rut tien|💸 tieu tien chi
 🧾 hoa don bill|👛 vi wallet|💼 cong viec cap|📈 tang dau tu chung khoan stock|📉 giam lo|📊 bieu do thong ke|💹 ty gia lai|🥇 vang gold huy chuong|💎 kim cuong|🏆 cup
-🎯 muc tieu goal|🔁 transfer luong chuyen|🔄 withdraw rut ve|📤 chuyen ra outflow|📥 nhan vao|🗂️ danh muc thu muc|📁 thu muc|🏷️ nhan tag|🔒 khoa|🔑 chia khoa
+🎯 muc tieu goal|🔁 transfer luong chuyen|🔄 withdraw rut ve|📤 chuyen ra outflow tien ra|📥 nhan vao tien vao|🗂️ danh muc thu muc|📁 thu muc|🏷️ nhan tag|🔒 khoa|🔑 chia khoa
 🍜 an uong pho bun|🍚 com|🍔 burger an vat|🍕 pizza|🍣 sushi|🍗 ga ran|🥗 rau salad|🍞 banh mi|🍰 banh ngot cake|🍩 donut
 🍓 dau|🍎 tao|🍌 chuoi|🍉 dua hau|☕ ca phe coffee|🧋 tra sua|🍵 tra|🍺 bia beer|🍷 ruou vang|🥤 nuoc ngot
 🛒 di cho sieu thi mua sam|🛍️ mua sam shopping|👗 quan ao|👕 ao|👟 giay|👜 tui xach|💄 my pham|💍 nhan cuoi|⌚ dong ho|🕶️ kinh
@@ -21,7 +21,11 @@ const RAW = `
 📚 sach hoc giao duc|🎓 tot nghiep hoc phi|✏️ but|🏫 truong hoc|🧸 do choi tre em|🍼 sua be|🎒 cap sach|🎨 ve|🎵 am nhac|🎬 phim giai tri
 🎁 qua tang gift|🎉 tiec le|🎂 sinh nhat|💐 hoa tang|🧧 li xi tet|🎄 noel|🕯️ nen|💌 thu|🤝 bat tay transfer|🙏 cam on tu thien
 📦 khac hang hoa|🐕 cho|🛡️ bao hiem|📄 giay to hop dong|⚖️ phap ly|🧮 tinh toan|📅 lich|⏰ bao thuc|🗓️ ke hoach|✅ xong
+⬆️ mui ten len tien ra|⬇️ mui ten xuong tien vao|↗️ mui ten cheo len tien ra|↙️ mui ten cheo xuong tien vao|🔴 tron do tien ra|🟢 tron xanh tien vao|🛫 may bay len tien ra|🛬 may bay xuong tien vao
 `;
+
+/** 5 cặp icon tương phản tiền ra / tiền vào, hiện ở đầu bộ chọn icon của nút nhanh. */
+export const MONEY_PAIRS = [['⬆️', '⬇️'], ['↗️', '↙️'], ['📤', '📥'], ['🔴', '🟢'], ['🛫', '🛬']];
 
 export const ICONS = RAW.split(/[|\n]/).map((s) => s.trim()).filter(Boolean).map((s) => {
   const i = s.indexOf(' ');
@@ -38,8 +42,10 @@ export function searchIcons(q) {
 }
 
 /** HTML bộ chọn icon: ô tìm kiếm + lưới icon. id dùng làm tiền tố. */
-export function iconPickerHtml(id, selected) {
+export function iconPickerHtml(id, selected, { pairs = null } = {}) {
+  const pairBtn = (icon) => `<button type="button" class="chip icon-chip ${icon === selected ? 'on' : ''}" data-icon="${icon}">${icon}</button>`;
   return `<div class="icon-picker" id="${id}">
+    ${pairs ? `<div class="ip-pairs"><span>Ra</span>${pairs.map((p) => pairBtn(p[0])).join('')}<span>Vào</span>${pairs.map((p) => pairBtn(p[1])).join('')}</div>` : ''}
     <input type="search" class="ip-q" placeholder="🔍 Tìm biểu tượng: tiền, ăn, xe, nhà, mèo…" autocomplete="off">
     <div class="ip-grid">${gridHtml(ICONS, selected)}</div>
   </div>`;
@@ -51,10 +57,11 @@ const gridHtml = (list, selected) => list.map((x) => `<button type="button" clas
 export function bindIconPicker(root, onPick, getSelected) {
   const q = root.querySelector('.ip-q'), grid = root.querySelector('.ip-grid');
   q.addEventListener('input', () => { grid.innerHTML = gridHtml(searchIcons(q.value), getSelected()); });
-  grid.addEventListener('click', (e) => {
+  root.addEventListener('click', (e) => {
     const b = e.target.closest('[data-icon]');
     if (!b) return;
-    grid.querySelectorAll('[data-icon]').forEach((x) => x.classList.toggle('on', x === b));
+    // Cùng một icon có thể nằm ở cả khu cặp icon và lưới: đánh dấu mọi chỗ.
+    root.querySelectorAll('[data-icon]').forEach((x) => x.classList.toggle('on', x.dataset.icon === b.dataset.icon));
     onPick(b.dataset.icon);
   });
 }
