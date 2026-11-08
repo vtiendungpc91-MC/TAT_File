@@ -4,7 +4,7 @@ Web app (PWA): cài lên màn hình chính iPhone/Android như app thật, chạ
 Dữ liệu chỉ lưu trên thiết bị (IndexedDB), không gửi lên server nào.
 
 - **Link app:** https://vtiendungpc91-mc.github.io/SLA_Thu_Chi/
-- **Phiên bản khi ghi tài liệu này:** v7.15.0 (07/11/2026). Phiên bản hiện tại xem ở `VERSION` trong `sw.js`.
+- **Phiên bản khi ghi tài liệu này:** v7.18.0 (08/11/2026). Phiên bản hiện tại xem ở `VERSION` trong `sw.js`.
 
 ## Cách tổ chức dữ liệu
 
@@ -35,15 +35,20 @@ Màn hình chính là **Tổng quan** của User: 4 thẻ Account, Thấu chi, T
 | **User đặc biệt ⭐** | Tối đa 1, đánh dấu lúc tạo. Có sẵn 1 Account + 1 Thấu chi, chia số dư thành **Personal** và **Family** (không được âm). Giao dịch phải ghi vào 1 trong 2 phần, trừ giao dịch giữa Account và Thấu chi. Chuyển đổi 2 phần và Reset trong Cài đặt. Chỉ Account của User này mới giao dịch được với User khác; Thấu chi được Transfer thêm đến ngân hàng trong Secrecy |
 | **Kế hoạch** | Ngân sách, Mục tiêu, Trả nợ, Định kỳ. Lúc thanh toán khoản Trả nợ, số tiền điền sẵn theo thiết lập và sửa được cho riêng kỳ đó |
 | **Nhắc nhở** | Theo từng User, tối đa 9, tạo ở cuối màn hình nút góc phải Tổng quan. Có tên, ngày đến hạn, giờ nhắc, số ngày nhắc trước; lặp theo ngày, tuần hoặc tháng với số kì lặp (để trống là không giới hạn). Nhắc nhở cũ trong từng mục tự chuyển lên User |
-| **Notifications** | Trả nợ và Nhắc nhở hiện từ đúng ngày giờ đã chọn (hạn trừ số ngày nhắc trước), giữ đến khi thanh toán hoặc bấm Done. Tổng quan chạy lần lượt các thông báo ở dòng trên cùng bên trái, mỗi cái 5 giây, xoay vòng |
+| **Notifications** | Trả nợ và Nhắc nhở hiện từ đúng ngày giờ đã chọn (hạn trừ số ngày nhắc trước), giữ đến khi thanh toán hoặc bấm Done. Tổng quan hiện 2 thông báo dưới dòng Nợ thẻ (mỗi dòng 1 cái, dài thì có ...), 5 giây đổi sang 2 cái kế tiếp, xoay vòng |
 | **Thống kê ở Tổng quan** | Tối đa 3 thống kê mỗi mục Account/Tiết kiệm, loại Transfer/Get In hoặc Thu/Chi, đặt được tên và biểu tượng, số liệu trong ngày. Trong Cài đặt của mục, mỗi thống kê có công tắc ẩn/hiện ở Tổng quan; công tắc ở dòng tiêu đề chỉ thu gọn danh sách |
-| **Nút nhanh** | Tạo trong Cài đặt của mục, tên tối đa 12 ký tự, icon theo loại (mặc định 💸 Chi, 💰 Thu, 🤝 Transfer, 🔄 Get In; đổi được trong Cài đặt chung → Icon giao dịch, có sẵn 5 cặp tiền ra/tiền vào, tên chức năng cố định). Tối đa Account/Thấu chi 6, Tiết kiệm 3, Thẻ 6. Hiện ở Tổng quan, mỗi dòng tối đa 3 nút, tối đa 2 dòng. Mỗi nút có công tắc ẩn/hiện ở Tổng quan; công tắc ở dòng tiêu đề chỉ thu gọn danh sách. Nút luôn xếp theo Chi, Thu, Transfer, Get In. Dưới cụm nút luôn hiện 5 giao dịch gần nhất (có nút ẩn/hiện); khoản mới trong 10 phút có nút Recall để hủy |
+| **Nút nhanh** | Tạo trong Cài đặt của mục, tên tối đa 12 ký tự, icon theo loại (mặc định 💸 Chi, 💰 Thu, 🤝 Transfer, 🔄 Get In; đổi được trong Cài đặt chung → Icon giao dịch, có sẵn 5 cặp tiền ra/tiền vào, tên chức năng cố định). Tối đa Account/Thấu chi 6, Tiết kiệm 3, Thẻ 6; riêng Account của User đặc biệt 12. Hiện ở Tổng quan, mỗi dòng tối đa 3 nút, chia đều các dòng, tối đa 2 dòng (Account của User đặc biệt 4 dòng). Mỗi nút có công tắc ẩn/hiện ở Tổng quan; công tắc ở dòng tiêu đề chỉ thu gọn danh sách. Nút luôn xếp theo Chi, Thu, Transfer, Get In. Dưới cụm nút luôn hiện 5 giao dịch gần nhất (có nút ẩn/hiện); khoản mới trong 10 phút có nút Recall để hủy |
 | **Nhập số tiền** | Tự thêm dấu chấm hàng nghìn, nút **+000** bên phải ô, đề xuất số tiền ngay dưới ô. Ngày cố định là hôm nay khi ghi mới, chỉ sửa khi mở lại giao dịch |
-| **Phần đầu cố định** | Khi cuộn, phần đầu đứng yên: Tổng quan đến dòng thẻ Account, Thấu chi…; Giao dịch và Báo cáo đến dòng Ngày/Tuần/Tháng; Kế hoạch đến dòng thẻ Ngân sách, Mục tiêu…; Cài đặt của mục đến ngay trên nhóm đầu tiên |
+| **Phần đầu cố định** | Khi cuộn, phần đầu đứng yên: Tổng quan đến dòng thẻ Account, Thấu chi…; Giao dịch và Báo cáo đến dòng Ngày/Tuần/Tháng; Kế hoạch đến dòng thẻ Ngân sách, Mục tiêu…; Cài đặt của mục đến ngay trên nhóm đầu tiên; Cài đặt chung đến hết danh sách chọn User |
 | **Giao dịch** | Lọc theo kỳ, loại và nhiều danh mục đã có trong lịch sử; tìm kiếm; xuất CSV |
 | **Báo cáo** | Theo ngày, tháng, quý, năm hoặc khoảng tự chọn; biểu đồ theo thời gian và danh mục |
+| **Giao diện** | Mỗi loại tài khoản một màu (Account cam, Thấu chi xanh nhạt, Tiết kiệm xanh lá, Thẻ đỏ) ở tab, nút +, viền thẻ tài khoản, tiêu đề và nút Đóng. Số tiền thẳng cột. Phần đầu thu gọn khi cuộn. Nút 👁 che mọi số tiền. Chế độ sáng/tối |
+| **Tìm kiếm chung** | Nút 🔎 ở Tổng quan: tìm theo ghi chú, danh mục, tên tài khoản, tag hoặc số tiền trong mọi tài khoản của User; bấm kết quả mở đúng ngày của giao dịch |
+| **Báo cáo thêm** | Biểu đồ tổng tài sản của User 12 tháng (Account + Thấu chi + Tiết kiệm − nợ thẻ). Nút 🖼️ tạo ảnh tóm tắt thu chi của kỳ đang xem để chia sẻ hoặc lưu |
+| **Nhắc sao lưu** | Quá 7 ngày chưa sao lưu (hoặc chưa sao lưu lần nào) thì hiện trong Notifications và dòng thông báo ở Tổng quan |
+| **Face ID / Touch ID** | Bật trong Cài đặt chung → Bảo mật (chỉ hiện khi máy hỗ trợ). Màn khóa có thêm nút mở bằng Face ID; mật khẩu số vẫn luôn dùng được |
 | **Khóa app** | Mật khẩu số khi mở app (mặc định `2024`, nên đổi trong Cài đặt), khóa riêng từng mục được |
-| **Dữ liệu** | Sao lưu **tất cả** vào 1 file `.json` và khôi phục từ file đó; nút Save nhanh |
+| **Dữ liệu** | Sao lưu **tất cả** vào 1 file `.json` và khôi phục từ file đó; nút Save nhanh. Mỗi lần lưu phải đặt mật khẩu 4 số, file được mã hóa (PBKDF2 + AES-GCM); khôi phục phải nhập đúng mật khẩu. Quên mật khẩu thì không mở được file. File cũ không có mật khẩu vẫn khôi phục được |
 
 ## 1. Chạy thử trên máy tính
 

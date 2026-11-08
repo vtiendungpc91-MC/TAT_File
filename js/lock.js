@@ -40,6 +40,46 @@ export async function setPin(pin) {
   saveConfig({ salt, hash: await hash(salt + pin), len: pin.length });
 }
 
+// ---------- Mở khóa bằng Face ID / Touch ID (WebAuthn, khóa trên máy) ----------
+// App không có máy chủ: chỉ cần iPhone xác nhận đúng khuôn mặt/vân tay là mở, mật khẩu số vẫn luôn dùng được.
+const BIO_KEY = 'stc-bio';
+const b64 = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf)));
+const unb64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+export const bioEnabled = () => !!localStorage.getItem(BIO_KEY);
+export async function bioAvailable() {
+  try {
+    return !!(window.PublicKeyCredential && navigator.credentials?.create)
+      && await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
+  } catch { return false; }
+}
+export async function enableBio() {
+  const cred = await navigator.credentials.create({
+    publicKey: {
+      rp: { name: 'Sổ Thu Chi' },
+      user: { id: crypto.getRandomValues(new Uint8Array(16)), name: 'so-thu-chi', displayName: 'Sổ Thu Chi' },
+      challenge: crypto.getRandomValues(new Uint8Array(32)),
+      pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 }],
+      authenticatorSelection: { authenticatorAttachment: 'platform', userVerification: 'required', residentKey: 'discouraged' },
+      timeout: 60000,
+    },
+  });
+  if (!cred) throw new Error('Chưa tạo được');
+  localStorage.setItem(BIO_KEY, b64(cred.rawId));
+}
+export const disableBio = () => localStorage.removeItem(BIO_KEY);
+async function bioCheck() {
+  const id = localStorage.getItem(BIO_KEY);
+  const res = await navigator.credentials.get({
+    publicKey: {
+      challenge: crypto.getRandomValues(new Uint8Array(32)),
+      allowCredentials: [{ type: 'public-key', id: unb64(id), transports: ['internal'] }],
+      userVerification: 'required',
+      timeout: 60000,
+    },
+  });
+  if (!res) throw new Error('Không xác thực được');
+}
+
 let unlocking = null;
 
 /** Hiện màn hình khóa; trả về Promise hoàn tất khi nhập đúng mật khẩu. */
@@ -61,6 +101,7 @@ export function showLock() {
         <div class="dots">${'<i></i>'.repeat(len)}</div>
         <div class="keypad">${[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => `<button type="button" data-k="${n}">${n}</button>`).join('')}
           <span></span><button type="button" data-k="0">0</button><button type="button" data-k="del" aria-label="Xóa">⌫</button></div>
+        ${bioEnabled() ? '<button type="button" class="bio-btn" data-bio>🙂 Mở bằng Face ID / Touch ID</button>' : ''}
       </div>`;
     document.body.appendChild(el);
     document.body.classList.add('is-locked');
@@ -110,6 +151,10 @@ export function showLock() {
       e.preventDefault();
       lastPointer = Date.now();
       press(b.dataset.k);
+    });
+    el.querySelector('[data-bio]')?.addEventListener('click', async () => {
+      if (Date.now() < waitUntil) return;
+      try { await bioCheck(); finish(); } catch { msg.textContent = 'Không xác thực được, hãy nhập mật khẩu'; }
     });
     el.addEventListener('click', (e) => {
       const b = e.target.closest('[data-k]');

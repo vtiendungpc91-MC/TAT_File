@@ -1,19 +1,20 @@
 // Các màn hình và form của app.
 import * as S from './store.js';
 import { state } from './store.js';
+import { dbOf } from './db.js';
 import {
   ui, currentRange, reportRange, rangeFor, periodState, datePick, amountLine, moneyBox, isDark, toggleTheme, toast, openSheet, restorePageScroll, periodBar, progress, empty, shareOrDownload, download, openCalendarFile, compressImage,
 } from './ui.js';
 import {
   esc, fmt, fmtNum, fmtCur, fmtSigned, fmtShort, fmtDate, fmtDayHeader, fmtDue, parseAmount, todayISO, addDays, diffDays,
   getRange, shiftAnchor, prevRange, elapsedDays, parseISO, nextDate, FREQ_LABEL, PERIOD_LABEL, splitTags, debounce, addMonths,
-  fmtDM, vnDateISO, fmtTimeVN, fmtDateTimeVN,
+  fmtDM, vnDateISO, fmtTimeVN, fmtDateTimeVN, isMasked, setMasked, fmtPlain,
 } from './utils.js';
-import { donut, bars } from './charts.js';
-import { iconPickerHtml, bindIconPicker, MONEY_PAIRS } from './icons.js';
+import { donut, bars, lineChart } from './charts.js';
+import { iconPickerHtml, bindIconPicker, MONEY_PAIRS, plain } from './icons.js';
 import { buildAllDayICS, buildDailyICS } from './ics.js';
-import { AUTO_FILE_NAME, canPickFile, saveStatus, markSaved, backupJson, pickBackupFile, saveToPickedFile } from './autosave.js';
-import { lockConfig, isDefaultPin, DEFAULT_PIN, checkPin, setPin, setLockEnabled, setLockDelay } from './lock.js';
+import { AUTO_FILE_NAME, canPickFile, saveStatus, markSaved, backupJson, pickBackupFile, saveToPickedFile, encryptBackup, decryptBackup, isEncryptedBackup, BACKUP_PIN_RE } from './autosave.js';
+import { lockConfig, isDefaultPin, DEFAULT_PIN, checkPin, setPin, setLockEnabled, setLockDelay, bioEnabled, bioAvailable, enableBio, disableBio } from './lock.js';
 
 export const actions = {};
 const $ = (root, sel) => root.querySelector(sel);
@@ -192,14 +193,14 @@ function topBar(sub = '', right = '') {
       <button type="button" class="chip-sub notif-count" data-act="users" data-notif-count hidden></button>
     </div>
     <div class="chip-col right">
-      <button type="button" class="profile-chip book-chip" data-act="book-close" style="--c:${esc(b.color)}" title="Đóng, về Tổng quan">
+      <button type="button" class="profile-chip book-chip" data-act="book-close" title="Đóng, về Tổng quan">
         <span class="chip-name">Đóng</span> <i>✕</i></button>
       <small class="chip-sub" data-kind-total></small>
       <small class="chip-sub pf-p" data-pf-top="personal" hidden></small>
       <small class="chip-sub pf-f" data-pf-top="family" hidden></small>
     </div>
   </header>
-  <div class="title-row"><div><h1>${esc(b.name)}${b.locked ? ' <span class="lock-badge" title="Mục đang khóa">🔒</span>' : ''}</h1>${sub ? `<small>${sub}</small>` : ''}</div>${right}</div>`;
+  <div class="title-row"><div><h1>${esc(b.name)}${b.locked ? ' <span class="lock-badge" title="Mục đang khóa">🔒</span>' : ''}</h1>${sub ? `<small>${sub}</small>` : ''}</div><div class="title-acts">${right}${maskBtn()}</div></div>`;
 }
 
 // Các số phải đọc bất đồng bộ: hiện ngay giá trị lần trước rồi cập nhật, để không bị trống rồi hiện lại (chớp).
@@ -236,10 +237,12 @@ function restoreTop(root) {
   });
 }
 
-// Dòng thông báo chạy ở Tổng quan: mỗi thông báo 5 giây, xoay vòng liên tục.
+// Khối thông báo ở Tổng quan (dưới dòng Nợ thẻ): hiện 2 thông báo, mỗi dòng 1 cái, 5 giây đổi sang 2 cái kế tiếp, xoay vòng.
 const TICKER_MS = 5000;
+const TICKER_LINES = 2;
 let tickerTimer = null, tickerIdx = 0;
 function tickerText(a) {
+  if (a.kind === 'backup') return `${NOTIF.backup.icon} ${a.title}`;
   const when = a.kind === 'budget' ? `${Math.round(a.ratio * 100)}%` : fmtDue(a.days);
   return `${NOTIF[a.kind].icon} ${when} · ${a.title}`;
 }
@@ -248,18 +251,20 @@ function startTicker(el, alerts) {
   clearInterval(tickerTimer);
   el.hidden = !alerts.length;
   if (!alerts.length) return;
+  const lines = [...el.children];
+  const count = Math.min(TICKER_LINES, alerts.length);
   const show = () => {
     if (!el.isConnected) return clearInterval(tickerTimer);
     tickerIdx %= alerts.length;
-    const text = tickerText(alerts[tickerIdx]);
-    if (el.textContent === text) return; // Vẽ lại mà vẫn thông báo đó thì không chạy lại hiệu ứng.
-    el.textContent = text;
+    const texts = lines.map((_, i) => (i < count ? tickerText(alerts[(tickerIdx + i) % alerts.length]) : ''));
+    if (lines.every((line, i) => line.textContent === texts[i])) return; // Vẽ lại mà vẫn các thông báo đó thì không chạy lại hiệu ứng.
+    lines.forEach((line, i) => { line.textContent = texts[i]; line.hidden = !texts[i]; });
     el.classList.remove('tick');
     void el.offsetWidth; // Chạy lại hiệu ứng hiện dần.
     el.classList.add('tick');
   };
   show();
-  if (alerts.length > 1) tickerTimer = setInterval(() => { tickerIdx++; show(); }, TICKER_MS);
+  if (alerts.length > TICKER_LINES) tickerTimer = setInterval(() => { tickerIdx += TICKER_LINES; show(); }, TICKER_MS);
 }
 
 /** Điền số thông báo và tổng tiền dưới 2 nút đầu trang (đọc nhiều mục nên làm sau khi vẽ). */
@@ -285,7 +290,7 @@ async function fillTopBar(root) {
     debtEl.hidden = !credits.length;
     debtEl.textContent = `Nợ thẻ ${fmt(debt)}`;
     savingEl.textContent = `Tiết kiệm ${fmt(saving)}`;
-    cardEl.parentElement.style.display = tabBooks(u.id, 'wallet').length ? '' : 'none';
+    cardEl.hidden = !tabBooks(u.id, 'wallet').length;
     cardEl.textContent = `Ví điện tử ${fmt(wallet)}`;
   } else {
     const room = innerWidth / 2 - 44;
@@ -405,12 +410,14 @@ const NOTIF = {
   budget: { icon: '⚠️', btn: 'Xem' },
   reminder: { icon: '🔔', btn: 'Done' },
   cardpay: { icon: '💳', btn: 'Trích trả' },
+  backup: { icon: '💾', btn: 'Sao lưu' },
 };
 function notifRow(a) {
   const sub = a.kind === 'budget'
     ? `Đã dùng ${Math.round(a.ratio * 100)}% ngân sách (${fmtShort(a.amount)} / ${fmtShort(a.limit)})`
     : a.kind === 'pending'
       ? `${fmtShort(a.amount)} · kỳ ${fmtDate(a.date)}${a.noFunds ? ' · chưa ghi được vì thiếu số dư' : ' · chờ xác nhận'}`
+      : a.kind === 'backup' ? 'Dữ liệu chỉ nằm trên máy này, nên sao lưu ít nhất mỗi tuần'
       : a.kind === 'cardpay' ? `${a.count} khoản chưa thanh toán đến hết ${fmtDate(addDays(a.before, -1))} · ${fmt(a.amount)}`
       : a.kind === 'reminder' ? `${fmtDue(a.days)} · ${fmtDate(a.date)}${a.time ? ' ' + a.time : ''}${a.note ? ' · ' + a.note : ''}`
         : `${fmt(a.amount)} · ${fmtDue(a.days)} · ${fmtDate(a.date)}${a.time ? ' ' + a.time : ''}`;
@@ -433,6 +440,7 @@ async function fillNotifications(sh) {
 /** Mở đúng mục rồi thực hiện thao tác của thông báo. */
 async function runNotif({ notif, book, id }) {
   if (notif === 'reminder') { S.doneReminder(S.currentUser().id, id); return toast('Đã Done'); }
+  if (notif === 'backup') return actions.backup();
   await switchTo(book);
   if (notif === 'debt') {
     const d = state.debts.find((x) => x.id === id);
@@ -522,7 +530,10 @@ actions.books = () => {
       sh.querySelectorAll('[data-over-sum]').forEach(async (el) => {
         const key = `o:${u.id}:${el.dataset.overSum}`;
         showCached(el, key);
-        setCached(el, key, fmt(await tabTotal(u.id, el.dataset.overSum)));
+        // Thẻ tín dụng: tabTotal là số đang nợ (dương); hiện số âm màu đỏ giống dòng "Nợ thẻ" ở Tổng quan.
+        const v = await tabTotal(u.id, el.dataset.overSum);
+        const shown = el.dataset.overSum === 'credit' ? -v : v;
+        setCached(el, key, shown < 0 ? `<span class="expense">${fmt(shown)}</span>` : fmt(shown));
       });
       sh.addEventListener('click', async (e) => {
         const sw = e.target.closest('[data-switch]'), ed = e.target.closest('[data-edit]');
@@ -1073,7 +1084,11 @@ async function saveStat(item, data) {
   await S.setSetting('stats', item ? list.map((x) => (x.id === item.id ? row : x)) : [...list, row]);
 }
 const statSum = (list, type) => list.filter((t) => t.type === type).reduce((s, t) => s + t.amountVnd, 0);
-const overRange = () => getRange(ui.overPeriod || 'day', todayISO());
+// Last Month: cả tháng liền trước tháng hiện tại, tính như kỳ Tháng.
+const overRange = () => (ui.overPeriod === 'lastmonth'
+  ? getRange('month', addMonths(todayISO().slice(0, 8) + '01', -1))
+  : getRange(ui.overPeriod || 'day', todayISO()));
+const OVER_PERIODS = [['day', 'Ngày'], ['week', 'Tuần'], ['month', 'Tháng'], ['lastmonth', 'Last Month']];
 
 function statRow(t) {
   const sign = t.type === 'income' ? 1 : -1;
@@ -1384,7 +1399,12 @@ const OVER_TABS = [['bank', 'Account'], ['od', 'Thấu chi'], ['saving', 'Tiết
 const OVER_ICONS = { bank: '🏦', od: '🏧', saving: '🐷', credit: '💳', wallet: '👛' };
 /** Ví điện tử đã bỏ: thẻ này chỉ còn hiện cho User đang có ví từ trước, để thanh toán và xóa dần. */
 const overTabs = (userId) => OVER_TABS.filter(([tab]) => tab !== 'wallet' || tabBooks(userId, 'wallet').length);
-const overKindNow = () => (overTabs(S.currentUser().id).some(([tab]) => tab === ui.overKind) ? ui.overKind : 'bank');
+const overKindNow = () => {
+  const tabs = homeTabs(S.currentUser().id);
+  return tabs.some(([tab]) => tab === ui.overKind) ? ui.overKind : tabs[0]?.[0] || 'bank';
+};
+/** Thẻ ở Tổng quan: chỉ hiện thẻ đang có tài khoản. */
+const homeTabs = (userId) => overTabs(userId).filter(([tab]) => tabBooks(userId, tab).length);
 /** Các mục của một thẻ ở Tổng quan: Bank và Thấu chi tách riêng. */
 const tabBooks = (userId, tab) => S.userBooks(userId).filter((b) => {
   if (tab === 'bank') return S.kindOfBook(b) === 'bank' && !b.overdraft;
@@ -1438,29 +1458,35 @@ function homeView() {
     </div>
   </header>
   <div class="over-lines">
-    <div><button type="button" class="over-ticker" data-act="users" data-over-ticker hidden></button><small class="chip-sub over-r" data-kind-total></small></div>
-    <div><small class="chip-sub over-saving" data-over-saving></small><small class="chip-sub over-r pf-p" data-pf-top="personal" hidden></small></div>
-    <div><small class="chip-sub over-debt" data-over-debt hidden></small><small class="chip-sub over-r pf-f" data-pf-top="family" hidden></small></div>
-    <div style="display:none"><small class="chip-sub over-card" data-over-card></small></div>
+    <div><small class="chip-sub over-saving" data-over-saving></small><small class="chip-sub over-r" data-kind-total></small></div>
+    <div><small class="chip-sub over-debt" data-over-debt hidden></small><small class="chip-sub over-r pf-p" data-pf-top="personal" hidden></small></div>
+    <div><small class="chip-sub over-card" data-over-card hidden></small><small class="chip-sub over-r pf-f" data-pf-top="family" hidden></small></div>
+    <div class="over-ticker-box" data-over-ticker hidden>${'<button type="button" class="over-ticker" data-act="users" hidden></button>'.repeat(TICKER_LINES)}</div>
   </div>
-  <div class="title-row over-title"><div><h1>${esc(overName(u))}</h1></div></div>
-  <div class="over-date"><small>📅 ${fmtDayHeader(todayISO())}</small>
-    <select id="over-period" class="chip-select" aria-label="Kỳ xem số liệu">${[['day', 'Ngày'], ['week', 'Tuần'], ['month', 'Tháng']].map(([k, l]) => `<option value="${k}" ${(ui.overPeriod || 'day') === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
-  <div class="seg tabs">${overTabs(u.id).map(([k, label]) => `<button type="button" data-act="over-tab" data-v="${k}" class="${kind === k ? 'on' : ''}">${label}</button>`).join('')}</div>
-  <div data-over-list>${overCache.get(`${u.id}:${kind}:${ui.overPeriod || 'day'}`) ?? ['day', 'week', 'month'].map((p) => overCache.get(`${u.id}:${kind}:${p}`)).find(Boolean) ?? ''}</div>
+  <div class="title-row over-title"><div><h1>${esc(overName(u))}</h1></div><div class="title-acts"><button type="button" class="icon-btn" data-act="search-all" title="Tìm trong mọi tài khoản" aria-label="Tìm trong mọi tài khoản">🔎</button>${maskBtn()}</div></div>
+  <div class="over-date"><small>📅 ${ui.overPeriod === 'lastmonth' ? `Last Month · ${esc(overRange().label)}` : fmtDayHeader(todayISO())}</small>
+    <select id="over-period" class="chip-select" aria-label="Kỳ xem số liệu">${OVER_PERIODS.map(([k, l]) => `<option value="${k}" ${(ui.overPeriod || 'day') === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+  <div class="seg tabs">${homeTabs(u.id).map(([k, label]) => `<button type="button" data-act="over-tab" data-v="${k}" class="${kind === k ? 'on' : ''}">${label}</button>`).join('')}</div>
+  <div data-over-list>${overCache.get(`${u.id}:${kind}:${ui.overPeriod || 'day'}`) ?? OVER_PERIODS.map(([p]) => overCache.get(`${u.id}:${kind}:${p}`)).find(Boolean) ?? ''}</div>
   ${fab(kind)}`;
 }
 actions['over-tab'] = (el) => { ui.overKind = el.dataset.v; window.scrollTo(0, 0); refresh(); };
 
-/** Nút nhanh: chia đều, mỗi dòng tối đa 3 nút, tối đa 2 dòng. */
+/** Nút nhanh: mỗi dòng tối đa 3 nút, chia đều các dòng (thường tối đa 2 dòng, User đặc biệt tối đa 4 dòng). */
 function quickRows(list, bookId) {
   if (!list.length) return '';
-  const first = list.length > 3 ? Math.ceil(list.length / 2) : list.length;
+  const rowCount = Math.ceil(list.length / 3);
+  const rows = [];
+  for (let i = 0, start = 0; i < rowCount; i++) {
+    const size = Math.ceil((list.length - start) / (rowCount - i));
+    rows.push(list.slice(start, start + size));
+    start += size;
+  }
   const btn = (q) => `<button type="button" class="btn quick-btn qk-btn q-${q.type}" data-act="quick-run" data-id="${esc(q.id)}" data-book="${esc(bookId)}" title="${esc(q.name)}"><span>${QUICK_KINDS[q.type].icon}</span><span class="qk-name">${esc(q.name)}</span></button>`;
   const row = (arr) => (arr.length ? `<div class="qk-row">${arr.map(btn).join('')}</div>` : '');
   const types = [...new Set(list.map((q) => q.type))];
   return `<div class="qk-legend">${types.map((t) => `<span>${QUICK_KINDS[t].icon} ${QUICK_KINDS[t].label}</span>`).join('')}</div>
-    ${row(list.slice(0, first))}${row(list.slice(first))}`;
+    ${rows.map(row).join('')}`;
 }
 
 /** Còn được Recall không: mới ghi trong 10 phút, chưa thanh toán (thẻ), không phải khoản trả nợ (có Hoàn tác riêng). */
@@ -1476,7 +1502,7 @@ function recentRows(list, b) {
     const when = `${t.date === today ? '' : fmtDM(t.date) + ' '}${t.createdAt && t.date === today ? fmtTimeVN(t.createdAt) : ''}`.trim();
     return `<div class="rc-row"><span class="rc-name">${QUICK_KINDS[txTypeKey(t)].icon} ${esc(txRowName(t))} <small>${esc(when)}</small></span>
       <span class="rc-amt ${t.type}">${sign ? fmtSigned(sign * t.amountVnd) : fmt(t.amountVnd)}</span>
-      ${canRecall(t) ? `<button type="button" class="btn small ghost rc-btn" data-act="quick-recall" data-id="${esc(t.id)}" data-book="${esc(b.id)}">↩ Recall</button>` : ''}</div>`;
+      ${canRecall(t) ? `<button type="button" class="btn small ghost rc-btn" data-act="quick-recall" data-id="${esc(t.id)}" data-book="${esc(b.id)}" title="Recall" aria-label="Recall">↩</button>` : ''}</div>`;
   }).join('');
   return `<div class="rc-box">
     <div class="rc-head"><small>Giao dịch gần đây</small><button type="button" class="link rc-toggle" data-act="recent-toggle" data-id="${esc(b.id)}">${b.hideRecent ? 'Hiện' : 'Ẩn'}</button></div>
@@ -1509,7 +1535,7 @@ async function overCard(b) {
   overExpiry = Math.min(overExpiry, ...o.recent.filter(canRecall).map((t) => t.createdAt + S.RECALL_MS));
   const isCard = b.kind === 'card' && !b.credit;
   const st = o.settings;
-  const quicks = sortQuicks(S.quicksOf(st).filter((q) => q.show !== false && S.quickTypesFor(b).includes(q.type))).slice(0, S.QUICK_MAX[S.kindOfBook(b)]);
+  const quicks = sortQuicks(S.quicksOf(st).filter((q) => q.show !== false && S.quickTypesFor(b).includes(q.type))).slice(0, S.quickMax(b));
   let stats = '';
   if (!isCard) {
     for (const x of S.statsOf(st).filter((y) => y.show !== false).slice(0, S.STAT_MAX)) {
@@ -1558,7 +1584,7 @@ async function fillOverview(root) {
       recallTimer = setTimeout(() => { if (current.route === 'home') refresh(); }, Math.max(1000, overExpiry - Date.now() + 500));
     }
     // Chuẩn bị sẵn các thẻ khác để lần đầu bấm sang là có ngay.
-    for (const [tab] of overTabs(u.id)) {
+    for (const [tab] of homeTabs(u.id)) {
       const k = `${u.id}:${tab}:${ui.overPeriod || 'day'}`;
       if (overCache.has(k)) continue;
       const other = await overTabHtml(u, tab);
@@ -2060,7 +2086,7 @@ function reportsView() {
   const tags = [...tagMap.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8);
 
   return `
-  ${topBar('📊 Báo cáo')}
+  ${topBar('📊 Báo cáo', '<button type="button" class="icon-btn" data-act="report-image" title="Ảnh tóm tắt" aria-label="Ảnh tóm tắt">🖼️</button>')}
   ${periodBar('report')}
   <section class="card stats">
     <div><small>Thu</small><b class="income">${fmt(t.income)}</b><em>${pctChange(t.income, pt.income)}</em></div>
@@ -2084,8 +2110,70 @@ function reportsView() {
   ${alloc ? allocationCard(alloc) : ''}
 
   ${tags.length ? `${sectionTitle('Chi theo tag')}<section class="card list">${tags.map(([g, v]) => `<button type="button" class="row" data-act="tx-tag-go" data-v="${esc(g)}"><span class="ci">#</span><span class="grow"><b>${esc(g)}</b></span><span class="amt">${fmt(v)}</span></button>`).join('')}</section>` : ''}
+
+  ${sectionTitle(`📈 Tổng tài sản của ${esc(S.currentUser().name)}`)}
+  <section class="card"><div data-networth>${fillCache.get('nw:' + S.currentUser().id) || ''}</div>
+    <p class="muted small">Account + Thấu chi + Tiết kiệm − nợ Thẻ tín dụng của cả User, tính ở cuối mỗi tháng (12 tháng gần nhất, tháng này tính đến hôm nay). Ví cũ không tính.</p></section>
   `;
 }
+
+/** Biểu đồ tổng tài sản: đọc mọi mục của User nên vẽ sau. */
+async function fillNetWorth(root) {
+  const el = root.querySelector('[data-networth]');
+  if (!el) return;
+  const key = 'nw:' + S.currentUser().id;
+  try {
+    const pts = await S.netWorthSeries(S.currentUser().id);
+    const now = pts[pts.length - 1].value, first = pts[0].value;
+    setCached(el, key, `<div class="nw-head"><span>Hiện tại <b class="${now < 0 ? 'expense' : ''}">${fmt(now)}</b></span>
+      <span class="${now - first >= 0 ? 'income' : 'expense'}">${fmtSigned(now - first)} <small class="muted">so với ${esc(pts[0].label)}/${esc(pts[0].year)}</small></span></div>${lineChart(pts)}`);
+  } catch (err) { console.warn(err); }
+}
+
+// ----- Ảnh tóm tắt (dùng kỳ đang xem ở Báo cáo): vẽ bằng canvas rồi Chia sẻ / Lưu ảnh -----
+actions['report-image'] = () => {
+  const r = reportRange(), t = S.totals(r), b = S.currentProfile(), u = S.currentUser();
+  const cats = S.byCategory(r, 'expense').slice(0, 6);
+  const accent = { bank: '#e8590c', wallet: '#e8590c', od: '#1c7ed6', saving: '#2b8a3e', credit: '#e03131' }[tabOfBook(b)] || '#1f6feb';
+  const W = 1080, rowH = 120, H = 640 + Math.max(1, cats.length) * rowH + 110;
+  const c = document.createElement('canvas');
+  c.width = W; c.height = H;
+  const g = c.getContext('2d');
+  const font = (w, s) => `${w} ${s}px -apple-system, "Segoe UI", Roboto, Arial, sans-serif`;
+  const text = (s, x, y, f, color, align = 'left') => { g.font = f; g.fillStyle = color; g.textAlign = align; g.fillText(s, x, y); };
+  const fit = (s, f, maxW) => { g.font = f; let out = s; while (out.length > 1 && g.measureText(out).width > maxW) out = out.slice(0, -2) + '…'; return out; };
+  g.fillStyle = '#f4f6fb'; g.fillRect(0, 0, W, H);
+  g.fillStyle = accent; g.fillRect(0, 0, W, 250);
+  text('📊 Tóm tắt thu chi', 64, 96, font(800, 58), '#fff');
+  text(fit(`${b.icon || ''} ${b.name} · ${u.name}`, font(600, 40), W - 128), 64, 160, font(600, 40), '#fff');
+  text(r.label, 64, 214, font(500, 36), 'rgba(255,255,255,.9)');
+  const box = (i, label, value, color) => {
+    const bw = (W - 64 * 2 - 40) / 3, x = 64 + i * (bw + 20), y = 290;
+    g.fillStyle = '#fff'; g.beginPath(); g.roundRect ? g.roundRect(x, y, bw, 190, 28) : g.rect(x, y, bw, 190); g.fill();
+    text(label, x + 30, y + 62, font(600, 32), '#6b7280');
+    text(fit(value, font(800, 40), bw - 50), x + 30, y + 136, font(800, 40), color);
+  };
+  box(0, 'Thu', fmtPlain(t.income), '#18794e');
+  box(1, 'Chi', fmtPlain(t.expense), '#c62f35');
+  box(2, 'Chênh lệch', (t.net >= 0 ? '+' : '−') + fmtPlain(Math.abs(t.net)), t.net >= 0 ? '#18794e' : '#c62f35');
+  text('Chi theo danh mục', 64, 580, font(800, 40), '#111827');
+  const total = cats.reduce((s, x) => s + x.amount, 0);
+  if (!cats.length) text('Chưa có khoản chi trong kỳ này', 64, 660, font(500, 34), '#6b7280');
+  cats.forEach((x, i) => {
+    const y = 650 + i * rowH;
+    const pct = total ? x.amount / total : 0;
+    text(fit(`${x.cat.icon || ''} ${x.cat.name}`, font(600, 36), 560), 64, y, font(600, 36), '#111827');
+    text(`${fmtPlain(x.amount)} · ${Math.round(pct * 100)}%`, W - 64, y, font(700, 34), '#111827', 'right');
+    g.fillStyle = '#e5e7eb'; g.fillRect(64, y + 26, W - 128, 18);
+    g.fillStyle = x.cat.color || accent; g.fillRect(64, y + 26, Math.max(6, (W - 128) * pct), 18);
+  });
+  text(`Sổ Thu Chi · tạo ngày ${fmtDate(todayISO())}`, W / 2, H - 50, font(500, 30), '#9ca3af', 'center');
+  // Chuyển ảnh ngay trong lần chạm để iPhone còn cho mở bảng Chia sẻ.
+  const bin = atob(c.toDataURL('image/png').split(',')[1]);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  shareOrDownload(`tom-tat-${r.start}-${r.end}.png`, new Blob([bytes], { type: 'image/png' }), 'image/png');
+};
 
 function allocationCard(a) {
   return `${sectionTitle('Phân bổ ' + esc(a.method.name), `<a class="link" href="#/settings">Đổi</a>`)}
@@ -2483,7 +2571,7 @@ function debtEvent(d) {
   const rrule = d.repeat === 'monthly' ? `FREQ=MONTHLY${d.periodsLeft != null ? ';COUNT=' + d.periodsLeft : ''}` : null;
   return {
     uid: 'debt-' + d.id, date: d.dueDate, rrule, remindDays: d.remindDays ?? state.settings.remindDays, time: d.time || S.ALERT_TIME,
-    title: `🏦 Trả nợ ${S.debtName(d)}: ${fmt(d.amount)}`,
+    title: `🏦 Trả nợ ${S.debtName(d)}: ${fmtPlain(d.amount)}`,
     description: `Cách thanh toán: ${d.method || ''}\n${d.note || ''}`,
   };
 }
@@ -3183,7 +3271,7 @@ actions['quick-run'] = async (el) => {
 /** Phần nút nhanh trong Cài đặt: công tắc ẩn/hiện, danh sách, nút tạo. */
 function quickSettingsHtml() {
   const b = S.currentProfile();
-  const max = S.QUICK_MAX[S.kindOfBook(b)];
+  const max = S.quickMax(b);
   const list = sortQuicks(S.quicksOf().filter((q) => S.quickTypesFor(b).includes(q.type)));
   const open = state.settings.quickListOpen !== false;
   return `${sectionTitle(`⚡ Mẫu nhập nhanh <small class="muted">(${list.length}/${max})</small>`, `<label class="switch" title="Mở/thu gọn danh sách"><input type="checkbox" data-list-toggle="quickListOpen" ${open ? 'checked' : ''}><i></i></label>`)}
@@ -3198,7 +3286,7 @@ function quickSettingsHtml() {
 actions['quick-new'] = () => {
   const b = S.currentProfile();
   const types = S.quickTypesFor(b);
-  if (S.quicksOf().filter((q) => types.includes(q.type)).length >= S.QUICK_MAX[S.kindOfBook(b)]) return toast('Đã đủ số nút nhanh tối đa');
+  if (S.quicksOf().filter((q) => types.includes(q.type)).length >= S.quickMax(b)) return toast('Đã đủ số nút nhanh tối đa');
   if (types.length === 1) return actions['quick-edit']({ dataset: { type: types[0] } });
   openSheet({
     title: 'Tạo nút nhanh',
@@ -3359,7 +3447,7 @@ function settingsView() {
       <small>${u.id === S.currentUser().id ? 'Đang dùng' : 'Bấm để xem các mục'}</small></span>
       <span class="psum" data-usum="${esc(u.id)}">…</span>${u.id === settingsUser().id ? '<span class="pick-dot">●</span>' : '›'}</button>`).join('')}
   </section>
-  <p class="muted small">Chọn User để xem các mục của người đó ở phần bên dưới.</p>
+  <p class="muted small pin-end">Chọn User để xem các mục của người đó ở phần bên dưới.</p>
 
   ${sectionTitle(`Các mục của ${esc(settingsUser().name)}`, `<button type="button" class="link" data-act="books">Quản lý</button>`)}
   ${[settingsUser()].map((u) => `
@@ -3384,7 +3472,9 @@ function settingsView() {
     <div class="row-between"><span>Khóa app bằng mật khẩu<br><small class="${lockConfig().enabled && isDefaultPin() ? 'expense' : 'muted'}">${!lockConfig().enabled ? 'Đang tắt' : isDefaultPin() ? `Đang dùng mật khẩu mặc định ${DEFAULT_PIN} — nên đổi` : 'Đang bật'}</small></span>
       <label class="switch"><input type="checkbox" data-lock-toggle ${lockConfig().enabled ? 'checked' : ''}><i></i></label></div>
     ${lockConfig().enabled ? `${field('Tự khóa khi rời app', `<select data-lock-delay>${[[0, 'Ngay lập tức'], [60, 'Sau 1 phút'], [300, 'Sau 5 phút'], [900, 'Sau 15 phút']].map(([v, l]) => `<option value="${v}" ${Number(lockConfig().delay) === v ? 'selected' : ''}>${l}</option>`).join('')}</select>`)}
-    <button type="button" class="btn ghost" data-act="pin-change">🔑 Đổi mật khẩu</button>` : ''}
+    <button type="button" class="btn ghost" data-act="pin-change">🔑 Đổi mật khẩu</button>
+    <div class="row-between" data-bio-row style="display:none"><span>Mở khóa bằng Face ID / Touch ID<br><small class="muted">Mật khẩu số vẫn luôn dùng được</small></span>
+      <label class="switch"><input type="checkbox" data-bio-toggle ${bioEnabled() ? 'checked' : ''}><i></i></label></div>` : ''}
     <p class="muted small">Mật khẩu dùng chung cho mọi người dùng trên máy này. Quên mật khẩu sẽ không mở được app, hãy ghi nhớ kỹ và sao lưu dữ liệu định kỳ.</p>
   </section>
 
@@ -3400,9 +3490,8 @@ function settingsView() {
 
   ${sectionTitle('Sao lưu & dữ liệu')}
   <section class="card list">
-    <button type="button" class="row" data-act="backup-pick"><span class="ci">📁</span><span class="grow"><b>Nơi lưu file sao lưu tự động</b><small data-save-status>${esc(saveStatusText())}</small></span>›</button>
-    <button type="button" class="row" data-act="backup"><span class="ci">💾</span><span class="grow"><b>Sao lưu tất cả (file .json)</b><small>Mọi người dùng + thẻ trả trước · ${s.lastBackup ? 'lần cuối ' + fmtDate(s.lastBackup) : 'chưa sao lưu lần nào'}</small></span>›</button>
-    <label class="row"><span class="ci">♻️</span><span class="grow"><b>Khôi phục từ bản sao lưu</b><small>Thay thế toàn bộ người dùng, thẻ và giao dịch</small></span>›<input type="file" accept=".json,application/json" data-act-change="restore" hidden></label>
+    <button type="button" class="row" data-act="backup"><span class="ci">💾</span><span class="grow"><b>Sao lưu tất cả (file .json)</b><small>Có mật khẩu 4 số · mọi người dùng + thẻ trả trước · ${s.lastBackup ? 'lần cuối ' + fmtDate(s.lastBackup) : 'chưa sao lưu lần nào'}</small></span>›</button>
+    <label class="row"><span class="ci">♻️</span><span class="grow"><b>Khôi phục từ bản sao lưu</b><small>Cần mật khẩu của file · thay thế toàn bộ người dùng, thẻ và giao dịch</small></span>›<input type="file" accept=".json,application/json" data-act-change="restore" hidden></label>
     <button type="button" class="row" data-act="export-csv-all"><span class="ci">📄</span><span class="grow"><b>Xuất Excel (CSV) toàn bộ giao dịch</b></span>›</button>
     <button type="button" class="row danger" data-act="wipe"><span class="ci">🗑️</span><span class="grow"><b>Xóa toàn bộ dữ liệu của ${esc(S.bookLabel(S.currentProfile()))}</b><small>Sổ của người khác giữ nguyên</small></span></button>
   </section>
@@ -3576,6 +3665,15 @@ async function mountSettings(root) {
     refresh();
   });
   root.querySelector('[data-lock-delay]')?.addEventListener('change', (e) => { setLockDelay(Number(e.target.value)); toast('Đã lưu'); });
+  const bioRow = root.querySelector('[data-bio-row]');
+  if (bioRow) bioAvailable().then((ok) => { if (ok && bioRow.isConnected) bioRow.style.display = ''; });
+  root.querySelector('[data-bio-toggle]')?.addEventListener('change', async (e) => {
+    if (!e.target.checked) { disableBio(); return toast('Đã tắt mở khóa bằng Face ID / Touch ID'); }
+    try { await enableBio(); toast('✅ Đã bật. Lần khóa sau có nút Face ID / Touch ID'); } catch (err) {
+      e.target.checked = false;
+      toast(err.name === 'NotAllowedError' ? 'Đã hủy hoặc máy không cho phép' : '⛔ Không bật được: ' + err.message, 4500);
+    }
+  });
   root.querySelectorAll('[data-set]').forEach((el) => {
     el.addEventListener('change', async () => {
       let v = el.value;
@@ -3602,10 +3700,15 @@ async function mountSettings(root) {
     if (!file) return;
     let data;
     try { data = JSON.parse(await file.text()); } catch { return toast('File không đọc được (không phải JSON)', 4000); }
+    const locked = isEncryptedBackup(data);
+    if (locked) {
+      data = await askRestorePin(data);
+      if (!data) return;
+    }
     const msg = data && data.all
       ? `Khôi phục sẽ THAY THẾ TOÀN BỘ người dùng, thẻ trả trước và giao dịch trên máy này bằng bản sao lưu ngày ${fmtDate(String(data.exportedAt || '').slice(0, 10))} (${(data.profiles || []).length} người dùng/thẻ). Tiếp tục?`
       : `Đây là bản sao lưu kiểu cũ (một sổ). Khôi phục sẽ THAY THẾ dữ liệu trong sổ của "${S.bookLabel(S.currentProfile())}". Tiếp tục?`;
-    if (!confirm(msg)) return;
+    if (!confirm(msg + (locked ? '' : '\n\n(File này không có mật khẩu, tạo từ bản cũ.)'))) return;
     try {
       ui.period = null;
       ui.reportPeriod = null;
@@ -3631,50 +3734,120 @@ const saveStatusText = () => {
 const showSaveStatus = (root) => root.querySelectorAll('[data-save-status]').forEach((el) => { el.textContent = saveStatusText(); });
 const fail = (err) => { if (err.name !== 'AbortError') toast('⛔ Không lưu được: ' + err.message, 4500); };
 
-/** iPhone/Android: chuẩn bị xong mới hiện nút, vì iOS chỉ mở bảng Chia sẻ ngay sau một lần chạm. */
-async function shareBackupSheet(root) {
-  const file = new File([await backupJson()], AUTO_FILE_NAME, { type: 'application/json' });
+// ----- Mật khẩu file sao lưu (4 số): bắt buộc khi lưu, cần đúng mới khôi phục được -----
+const backupPinField = (id, label) => field(label, `<input id="${id}" type="password" inputmode="numeric" autocomplete="off" maxlength="4" pattern="[0-9]*" class="pin-input">`);
+
+/** Bước 1: nhập mật khẩu 2 lần, mã hóa xong mới sang bước lưu. */
+function askBackupPin(next) {
+  const formId = 'bp-' + Date.now();
+  openSheet({
+    title: '🔐 Mật khẩu file sao lưu',
+    headAction: `<button type="submit" form="${formId}" class="btn primary small head-save">Tiếp</button>`,
+    body: `<form class="form" id="${formId}">
+      <p class="muted small">Đặt mật khẩu <b>4 chữ số</b> cho file này. Khi khôi phục, trên máy này hay máy khác, phải nhập đúng mật khẩu mới mở được.</p>
+      ${backupPinField('bp-1', 'Mật khẩu (4 số)')}
+      ${backupPinField('bp-2', 'Nhập lại mật khẩu')}
+      <p class="muted small">⚠️ Quên mật khẩu thì <b>không mở được file</b>, không có cách lấy lại. Mật khẩu 4 số chỉ chống người khác mở file một cách thông thường, vẫn nên giữ file ở nơi riêng tư.</p>
+    </form>`,
+    onMount(sh, close) {
+      setTimeout(() => $(sh, '#bp-1').focus(), 250);
+      let busy = false;
+      $(sh, 'form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        if (busy) return;
+        const a = $(sh, '#bp-1').value, b = $(sh, '#bp-2').value;
+        if (!BACKUP_PIN_RE.test(a)) return toast('Mật khẩu phải đúng 4 chữ số');
+        if (a !== b) return toast('2 lần nhập mật khẩu không khớp');
+        busy = true;
+        const btn = sh.closest('.sheet-wrap').querySelector('.head-save');
+        btn.textContent = 'Đang mã hóa…';
+        try {
+          const text = await encryptBackup(await backupJson(), a);
+          close();
+          next(text);
+        } catch (err) { busy = false; btn.textContent = 'Tiếp'; toast('⛔ Không tạo được file: ' + err.message, 4500); }
+      });
+    },
+  });
+}
+
+/** Bước 2: file đã mã hóa sẵn, bấm nút để lưu (iOS chỉ mở bảng Chia sẻ ngay sau một lần chạm). */
+function saveBackupSheet({ text, name, auto, root }) {
   openSheet({
     title: '💾 Lưu file sao lưu',
-    body: `<p>Điện thoại không cho app tự ghi vào file. Bấm nút dưới, chọn <b>Lưu vào Tệp</b>, chọn thư mục rồi bấm <b>Thay thế</b> nếu đã có file ${AUTO_FILE_NAME}.</p>
+    body: `<p>🔐 File đã được khóa bằng mật khẩu.</p>
+      <p>${auto && canPickFile() ? `Bấm nút dưới để ghi vào file sao lưu (${AUTO_FILE_NAME}).` : `Bấm nút dưới, chọn <b>Lưu vào Tệp</b>, chọn thư mục${auto ? ` rồi bấm <b>Thay thế</b> nếu đã có file ${AUTO_FILE_NAME}` : ''}.`}</p>
       <div class="actions"><button type="button" class="btn primary" data-go>📤 Lưu file</button></div>`,
     onMount(sh, close) {
       $(sh, '[data-go]').addEventListener('click', async () => {
         try {
-          if (navigator.canShare && navigator.canShare({ files: [file] })) await navigator.share({ files: [file], title: AUTO_FILE_NAME });
-          else download(AUTO_FILE_NAME, file);
-          markSaved(AUTO_FILE_NAME);
-          showSaveStatus(root);
-          close(); toast('💾 Đã gửi file sao lưu');
+          let saved = name;
+          if (auto && canPickFile()) saved = await saveToPickedFile(text) || await pickBackupFile(text);
+          else {
+            const file = new File([text], name, { type: 'application/json' });
+            if (navigator.canShare && navigator.canShare({ files: [file] })) await navigator.share({ files: [file], title: name });
+            else download(name, file);
+          }
+          if (auto) { if (!canPickFile()) markSaved(name); showSaveStatus(root); }
+          S.markBackup();
+          await S.setSetting('lastBackup', todayISO());
+          close(); toast('💾 Đã lưu file sao lưu ' + saved);
         } catch (err) { fail(err); }
       });
     },
   });
 }
 
-actions['backup-pick'] = async (el) => {
-  const root = el.closest('#main') || document;
-  if (!canPickFile()) return shareBackupSheet(root);
-  try {
-    const name = await pickBackupFile();
-    showSaveStatus(root);
-    toast('💾 Đã tạo file sao lưu: ' + name);
-  } catch (err) { fail(err); }
-};
-
-async function quickSave(root) {
-  if (!canPickFile()) return shareBackupSheet(root);
-  try {
-    const name = await saveToPickedFile() || await pickBackupFile();
-    showSaveStatus(root);
-    toast('💾 Đã lưu vào ' + name);
-  } catch (err) { fail(err); }
+/** Khôi phục file có mật khẩu: trả về dữ liệu đã giải mã, hoặc null nếu người dùng bỏ qua. */
+function askRestorePin(file) {
+  return new Promise((resolve) => {
+    let done = false;
+    const formId = 'rp-' + Date.now();
+    openSheet({
+      title: '🔐 Nhập mật khẩu file',
+      headAction: `<button type="submit" form="${formId}" class="btn primary small head-save">Mở file</button>`,
+      body: `<form class="form" id="${formId}">
+        <p class="muted small">File sao lưu ngày ${fmtDate(String(file.exportedAt || '').slice(0, 10))} có mật khẩu. Nhập đúng mật khẩu 4 số đã đặt lúc lưu.</p>
+        ${backupPinField('rp-pin', 'Mật khẩu (4 số)')}
+      </form>`,
+      onClose() { if (!done) resolve(null); },
+      onMount(sh, close) {
+        const inp = $(sh, '#rp-pin');
+        setTimeout(() => inp.focus(), 250);
+        let busy = false;
+        $(sh, 'form').addEventListener('submit', async (e) => {
+          e.preventDefault();
+          if (busy) return;
+          if (!BACKUP_PIN_RE.test(inp.value)) return toast('Mật khẩu phải đúng 4 chữ số');
+          busy = true;
+          try {
+            const data = await decryptBackup(file, inp.value);
+            done = true;
+            close();
+            resolve(data);
+          } catch (err) {
+            busy = false;
+            inp.value = '';
+            inp.focus();
+            toast(err.message === 'Sai mật khẩu' ? '⛔ Sai mật khẩu' : '⛔ File bị lỗi, không mở được', 3500);
+          }
+        });
+      },
+    });
+  });
 }
 
-actions.backup = async () => {
-  const data = await S.exportAll();
-  await shareOrDownload(`sothuchi-tat-ca-${todayISO()}.json`, JSON.stringify(data), 'application/json');
-  await S.setSetting('lastBackup', todayISO());
+actions['backup-pick'] = (el) => {
+  const root = el.closest('#main') || document;
+  askBackupPin((text) => saveBackupSheet({ text, name: AUTO_FILE_NAME, auto: true, root }));
+};
+
+function quickSave(root) {
+  askBackupPin((text) => saveBackupSheet({ text, name: AUTO_FILE_NAME, auto: true, root }));
+}
+
+actions.backup = () => {
+  askBackupPin((text) => saveBackupSheet({ text, name: `sothuchi-tat-ca-${todayISO()}.json`, auto: false }));
 };
 
 function csvOf(list) {
@@ -3879,10 +4052,82 @@ actions['period-date'] = (el) => {
 };
 actions['period-today'] = (el) => { pOf(el).anchor = todayISO(); refresh(); };
 
+// ----- Nút 👁: che / hiện mọi số tiền -----
+const maskBtn = () => `<button type="button" class="icon-btn mask-btn" data-act="mask-toggle" title="${isMasked() ? 'Hiện số tiền' : 'Che số tiền'}" aria-label="${isMasked() ? 'Hiện số tiền' : 'Che số tiền'}">${isMasked() ? '🙈' : '👁️'}</button>`;
+actions['mask-toggle'] = () => {
+  setMasked(!isMasked());
+  // Các bộ nhớ tạm đang giữ chữ số đã định dạng: bỏ để vẽ lại theo chế độ mới.
+  fillCache.clear(); topCache.clear(); overCache.clear();
+  refresh();
+  toast(isMasked() ? '🙈 Đã che số tiền' : '👁️ Đã hiện số tiền');
+};
+
+// ----- Tìm trong mọi tài khoản của User -----
+actions['search-all'] = () => {
+  const u = S.currentUser();
+  openSheet({
+    title: '🔎 Tìm trong mọi tài khoản',
+    body: `<input id="gs-q" type="search" placeholder="Ghi chú, danh mục, tên tài khoản, số tiền…" autocomplete="off">
+      <p class="muted small" id="gs-n">Đang đọc dữ liệu…</p>
+      <div class="card list" id="gs-list"></div>`,
+    onMount(sh, close) {
+      const q = $(sh, '#gs-q');
+      let rows = null;
+      const show = () => {
+        if (!rows) return;
+        const k = plain(q.value).trim();
+        const digits = q.value.replace(/\D/g, '');
+        const hit = !k ? [] : rows.filter((x) => x.text.includes(k) || (digits.length >= 3 && String(x.t.amountVnd).includes(digits)));
+        $(sh, '#gs-n').textContent = !k ? `Gõ để tìm trong ${rows.length} giao dịch của ${u.name}` : `${hit.length} kết quả${hit.length > 100 ? ' (hiện 100 khoản mới nhất)' : ''}`;
+        $(sh, '#gs-list').innerHTML = hit.slice(0, 100).map((x, i) => {
+          const sign = x.t.type === 'income' ? 1 : x.t.type === 'expense' ? -1 : 0;
+          return `<button type="button" class="row" data-i="${i}"><span class="ci">${esc(x.cat?.icon || '•')}</span>
+            <span class="grow"><b>${esc(x.t.note || x.cat?.name || 'Giao dịch')}</b><small>${fmtDate(x.t.date)} · ${esc(x.b.icon || '')} ${esc(x.b.name)}${x.cat && x.t.note ? ' · ' + esc(x.cat.name) : ''}</small></span>
+            <span class="amt ${x.t.type}">${sign ? fmtSigned(sign * x.t.amountVnd) : fmt(x.t.amountVnd)}</span></button>`;
+        }).join('');
+        $(sh, '#gs-list').hidden = !hit.length;
+        sh.querySelectorAll('#gs-list [data-i]').forEach((el) => el.addEventListener('click', async () => {
+          const x = hit[Number(el.dataset.i)];
+          close();
+          await openBook(x.b.id);
+          // Mở đúng ngày của giao dịch trong màn hình Giao dịch của mục đó.
+          const p = periodState();
+          p.type = 'day'; p.anchor = x.t.date;
+          refresh();
+        }));
+      };
+      q.addEventListener('input', debounce(show, 150));
+      setTimeout(() => q.focus(), 250);
+      (async () => {
+        const out = [];
+        const cur = S.currentProfile().id;
+        for (const b of S.userBooks(u.id)) {
+          const txs = b.id === cur ? state.transactions : await dbOf(b.id).getAll('transactions');
+          const cats = new Map((b.id === cur ? state.categories : await dbOf(b.id).getAll('categories')).map((c) => [c.id, c]));
+          for (const t of txs) {
+            const cat = cats.get(t.categoryId);
+            out.push({ t, b, cat, text: plain(`${t.note || ''} ${cat?.name || ''} ${b.name} ${(t.tags || []).join(' ')}`) });
+          }
+        }
+        rows = out.sort((x, y) => (x.t.date < y.t.date ? 1 : x.t.date > y.t.date ? -1 : (y.t.createdAt || 0) - (x.t.createdAt || 0)));
+        show();
+      })().catch((err) => { $(sh, '#gs-n').textContent = 'Không đọc được dữ liệu: ' + err.message; });
+    },
+  });
+};
+
+// ----- Phần đầu thu gọn khi cuộn (có độ trễ để không nhấp nháy quanh ngưỡng) -----
+let pinSmall = false;
+window.addEventListener('scroll', () => {
+  if (document.body.classList.contains('noscroll')) return;
+  const want = pinSmall ? window.scrollY > 8 : window.scrollY > 60;
+  if (want !== pinSmall) { pinSmall = want; document.body.classList.toggle('pin-small', want); }
+}, { passive: true });
+
 const VIEWS = {
   home: { html: homeView, mount: fillOverview },
   tx: { html: () => (S.isCard() ? cardView() : txView()), mount: (root) => { if (!S.isCard()) mountTx(root); } },
-  reports: { html: reportsView },
+  reports: { html: reportsView, mount: fillNetWorth },
   plan: { html: planView },
   settings: { html: settingsView, mount: mountSettings },
   bookset: { html: bookSettingsView, mount: mountSettings },
@@ -3891,7 +4136,7 @@ const VIEWS = {
 let current = { route: 'home', sub: null };
 
 // Phần đầu đứng yên khi cuộn, tính đến hết phần tử đánh dấu của từng màn hình.
-const PIN_END = { home: '.seg.tabs', tx: '.period > .seg', reports: '.period > .seg', plan: '.seg.tabs' };
+const PIN_END = { home: '.seg.tabs', tx: '.period > .seg', reports: '.period > .seg', plan: '.seg.tabs', settings: '.pin-end' };
 function splitPinned(box, route) {
   const moveUntil = (stop) => {
     const out = [];
@@ -3951,6 +4196,8 @@ export function render(route, sub) {
   const v = VIEWS[current.route];
   const main = document.getElementById('main');
   const y = window.scrollY;
+  // Màu của loại tài khoản đang xem (Account cam, Thấu chi xanh nhạt, Tiết kiệm xanh lá, Thẻ đỏ).
+  document.body.dataset.tab = current.route === 'home' ? overKindNow() : current.route === 'settings' ? '' : tabOfBook(S.currentProfile());
   paintMain(main, v.html(sub), current.route);
   restoreTop(main);
   v.mount && v.mount(main);

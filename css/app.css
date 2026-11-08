@@ -950,3 +950,65 @@ body.noscroll .pin-head { position: relative; top: var(--lock-y, 0px); }
 .sheet-wrap.no-anim .sheet, .sheet-wrap.no-anim .sheet-bg { transition: none; }
 /* Giữ sẵn chỗ cho dòng số dư để form không nhảy khi đọc xong */
 #tr-bal, #qr-bal, #cp-bal, #cr-bal { min-height: 1.45em; }
+/* Nút nhanh: nền nhạt, giữ viền đậm */
+.quick-btn.q-expense { background: #feeced; }
+.quick-btn.q-income { background: #e8f7ee; }
+.quick-btn.q-gop, .quick-btn.q-card { background: #e6f7f5; }
+.quick-btn.q-trich { background: #f3edfc; }
+html.dark .quick-btn.q-expense { background: #3a161c; }
+html.dark .quick-btn.q-income { background: #12301f; }
+html.dark .quick-btn.q-gop, html.dark .quick-btn.q-card { background: #102d29; }
+html.dark .quick-btn.q-trich { background: #281d3d; }
+/* Nút Recall chỉ có icon */
+.rc-btn { min-width: 32px; padding: 3px 8px; font-size: 15px; line-height: 1.2; }
+/* Khối thông báo ở Tổng quan: dưới dòng Nợ thẻ, trải hết bề ngang, tối đa 2 dòng */
+.over-lines > .over-ticker-box { display: flex; flex-direction: column; align-items: stretch; gap: 1px; margin-top: 2px; }
+.over-lines > .over-ticker-box[hidden], .over-ticker-box > .over-ticker[hidden] { display: none; }
+.over-ticker-box > .over-ticker { flex: none; width: 100%; display: block; }
+.over-ticker-box.tick { animation: ticker-in .35s ease; }
+.over-ticker.tick { animation: none; }
+/* Dòng không còn gì hiện (User thường không có Personal/Family): bỏ để không hở trên khối thông báo */
+.over-lines > div:not(.over-ticker-box):not(:has(> :not([hidden]))) { display: none; }
+
+/* ===== v7.18: màu theo loại tài khoản đang xem ===== */
+body[data-tab="bank"], body[data-tab="wallet"] { --kc: #e8590c; --kc-ink: #d9480f; --kc-on: #fff; }
+body[data-tab="od"] { --kc: #74c0fc; --kc-ink: #1971c2; --kc-on: #0b2545; }
+body[data-tab="saving"] { --kc: #2b8a3e; --kc-ink: #2b8a3e; --kc-on: #fff; }
+body[data-tab="credit"] { --kc: #e03131; --kc-ink: #c92a2a; --kc-on: #fff; }
+html.dark body[data-tab="bank"], html.dark body[data-tab="wallet"] { --kc-ink: #ff922b; }
+html.dark body[data-tab="od"] { --kc-ink: #74c0fc; }
+html.dark body[data-tab="saving"] { --kc-ink: #51cf66; }
+html.dark body[data-tab="credit"] { --kc-ink: #ff6b6b; }
+body[data-tab]:not([data-tab=""]) .over-acc { border-left: 4px solid var(--kc); }
+body[data-tab]:not([data-tab=""]) .pin-head .title-row h1 { color: var(--kc-ink); }
+body[data-tab]:not([data-tab=""]) .topbar .book-chip[data-act="book-close"] { --c: var(--kc); color: var(--kc-on) !important; }
+
+/* Số tiền thẳng cột: mọi chữ số cùng độ rộng */
+body { font-variant-numeric: tabular-nums; }
+
+/* Phần đầu thu gọn khi cuộn */
+.pin-head .title-row h1, .pin-head .settings-head h1 { transition: font-size .18s ease; }
+body.pin-small .pin-head .title-row { margin: 2px 2px 6px; }
+body.pin-small .pin-head .title-row h1, body.pin-small .pin-head .settings-head h1 { font-size: 18px; }
+body.pin-small .pin-head .title-row small, body.pin-small .pin-head > p.muted:not(.pin-end) { display: none; }
+
+/* Nút 👁 / 🔎 cạnh tiêu đề */
+.title-acts .icon-btn { font-size: 18px; }
+.over-title { align-items: center; }
+
+/* Biểu đồ tổng tài sản */
+.nw-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; font-size: 13.5px; }
+.nw-head b { font-size: 17px; }
+.nw .nw-line { fill: none; stroke: #1f6feb; stroke-width: 2.2; vector-effect: non-scaling-stroke; }
+.nw .nw-area { fill: color-mix(in srgb, #1f6feb 12%, transparent); stroke: none; }
+.nw .nw-dot { fill: #1f6feb; }
+.nw .nw-dot.neg { fill: var(--expense); }
+html.dark .nw .nw-line { stroke: #7aa7ff; }
+html.dark .nw .nw-dot { fill: #7aa7ff; }
+
+/* Màn khóa: nút Face ID / Touch ID */
+.bio-btn { margin-top: 18px; padding: 12px 18px; border-radius: 999px; border: 1px solid var(--line); background: var(--card); color: var(--text); font-weight: 700; font-size: 15px; }
+/* Thu gọn: Tổng quan bỏ hẳn dòng "Tổng quan" + 🔎 👁 (cuộn lên là hiện lại); màn hình khác thu nhỏ tiêu đề và nút */
+body.pin-small .pin-head .over-title { display: none; }
+body.pin-small .pin-head .title-row .icon-btn { width: 32px; height: 32px; font-size: 15px; }
+body.pin-small .pin-head .title-row .btn.small { padding: 4px 10px; font-size: 12.5px; }

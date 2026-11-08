@@ -1231,6 +1231,44 @@ export function reminderAlerts(userId) {
   }
   return out;
 }
+// ---------- Nhắc sao lưu: quá 7 ngày chưa sao lưu (hoặc chưa sao lưu lần nào) thì hiện trong thông báo ----------
+const LAST_BACKUP_KEY = 'stc-last-backup';
+export const BACKUP_REMIND_DAYS = 7;
+export const markBackup = () => localStorage.setItem(LAST_BACKUP_KEY, todayISO());
+export const lastBackupDate = () => localStorage.getItem(LAST_BACKUP_KEY) || state.settings.lastBackup || null;
+export function backupAlerts() {
+  const today = todayISO();
+  const last = lastBackupDate();
+  const days = last ? diffDays(last, today) : null;
+  if (last && days < BACKUP_REMIND_DAYS) return [];
+  return [{ key: `backup:${today}`, kind: 'backup', id: 'backup', days: 0, title: last ? `${days} ngày chưa sao lưu` : 'Chưa sao lưu lần nào', amount: 0, date: today, bookId: '', bookName: 'Sao lưu', bookIcon: '💾' }];
+}
+
+/**
+ * Tổng tài sản của User ở cuối mỗi tháng (tháng hiện tại tính đến hôm nay): số dư Account, Thấu chi, Tiết kiệm và
+ * Thẻ tín dụng (số âm = nợ). Ví cũ không có số dư nên không tính. Chỉ đọc dữ liệu, không ghi gì.
+ */
+export async function netWorthSeries(userId, months = 12) {
+  const today = todayISO();
+  const ends = [];
+  for (let i = months - 1; i >= 0; i--) {
+    const first = addMonths(today.slice(0, 8) + '01', -i);
+    const end = i === 0 ? today : addDays(addMonths(first, 1), -1);
+    ends.push({ end, label: `T${Number(first.slice(5, 7))}`, year: first.slice(0, 4), value: 0 });
+  }
+  const cur = currentProfile().id;
+  for (const b of userBooks(userId)) {
+    if (b.kind === 'card' && !b.credit) continue;
+    const txs = b.id === cur ? state.transactions : await dbOf(b.id).getAll('transactions');
+    const accs = (b.id === cur ? state.accounts : await dbOf(b.id).getAll('accounts')).filter((a) => !a.archived);
+    for (const a of accs) {
+      const effects = txs.map((t) => [t.date, txEffect(t, a.id)]).filter(([, v]) => v);
+      for (const p of ends) p.value += (Number(a.initial) || 0) + effects.reduce((s, [d, v]) => (d <= p.end ? s + v : s), 0);
+    }
+  }
+  return ends;
+}
+
 /** Nhắc nhở bản cũ nằm trong từng mục: chuyển lên User rồi mới xóa khỏi mục, không tính vào lần kiểm tra giới hạn. */
 async function adoptOldReminders(userId, bookId, old) {
   const mine = remindersOf(userId);
@@ -1263,7 +1301,7 @@ export async function userAlerts(userId) {
     if (oldReminders?.length) await adoptOldReminders(userId, b.id, oldReminders);
     out.push(...list.map((a) => ({ ...a, bookId: b.id, bookName: b.name, bookIcon: b.icon })));
   }
-  out.push(...reminderAlerts(userId));
+  out.push(...reminderAlerts(userId), ...backupAlerts());
   return out.sort((a, b) => a.days - b.days);
 }
 
@@ -1279,6 +1317,9 @@ export async function kindTotal(userId, kind) {
 
 // ---------- Màn hình Tổng quan chung: nút nhanh, thống kê, số liệu trong ngày của từng mục ----------
 export const QUICK_MAX = { bank: 6, saving: 3, card: 6 };
+/** Bank (không gồm Thấu chi) của User đặc biệt: 12 nút nhanh (4 dòng × 3 nút ở Tổng quan). */
+export const QUICK_MAX_SPECIAL = 12;
+export const quickMax = (b) => (kindOfBook(b) === 'bank' && !b.overdraft && userOf(b)?.special ? QUICK_MAX_SPECIAL : QUICK_MAX[kindOfBook(b)]);
 export const STAT_MAX = 3;
 /** Tổng quan luôn hiện 5 giao dịch gần nhất; khoản mới trong 10 phút được hủy (Recall). */
 export const RECALL_MS = 10 * 60 * 1000;
